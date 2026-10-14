@@ -1,5 +1,35 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+/** The return/enter arrow, drawn rather than typed — a ↵ glyph renders
+    inconsistently across the brand font stack. */
+function EnterIcon(): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M13.5 3.5v3.5a3 3 0 0 1-3 3H3" />
+      <path d="m6 7-3 3 3 3" />
+    </svg>
+  );
+}
+
+function StopIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+      <rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function Composer({
   onSend,
   onStop,
@@ -52,17 +82,25 @@ export function Composer({
         <div className="composer__controls">
           {picker}
           {busy ? (
-            <button type="button" className="btn btn--stop" onClick={onStop}>
-              Stop
+            <button
+              type="button"
+              className="btn btn--icon btn--stop"
+              onClick={onStop}
+              aria-label="Stop generating"
+              title="Stop generating"
+            >
+              <StopIcon />
             </button>
           ) : (
             <button
               type="button"
-              className="btn btn--primary btn--send"
+              className="btn btn--icon btn--primary btn--send"
               onClick={send}
               disabled={disabled || !value.trim()}
+              aria-label="Send message"
+              title="Send message (Enter)"
             >
-              Send
+              <EnterIcon />
             </button>
           )}
         </div>

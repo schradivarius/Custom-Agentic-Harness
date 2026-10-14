@@ -366,6 +366,13 @@ body {
 .btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .btn--new { margin-left: auto; font-size: 12px; padding: 5px 10px; }
 .btn--stop, .btn--send { flex: none; }
+/* Square icon button — Send and Stop swap in the same slot, so both are
+   icons; a text pill next to an icon would make the composer jump. */
+.btn--icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; border-radius: 8px;
+}
+.btn--icon svg { display: block; }
 
 /* ── composer ─────────────────────────────────────────────────────── */
 
