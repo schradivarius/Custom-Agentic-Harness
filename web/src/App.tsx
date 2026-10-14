@@ -324,12 +324,6 @@ export default function App(): JSX.Element {
           <span className="topbar__title">
             {conversations.find((c) => c.id === activeId)?.title ?? "New conversation"}
           </span>
-          <TargetPicker
-            targets={targets}
-            value={targetId}
-            onChange={setTargetId}
-            disabled={busy}
-          />
           {activeId && <code className="topbar__id">{activeId}</code>}
         </header>
 
@@ -416,6 +410,14 @@ export default function App(): JSX.Element {
           onStop={stop}
           busy={busy}
           disabled={health !== null && !health.ok}
+          picker={
+            <TargetPicker
+              targets={targets}
+              value={targetId}
+              onChange={setTargetId}
+              disabled={busy}
+            />
+          }
         />
       </main>
     </div>

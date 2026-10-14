@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export function Composer({
   onSend,
   onStop,
   busy,
   disabled,
+  picker,
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
   disabled: boolean;
+  /** Target picker, rendered in the controls row under the input. */
+  picker?: ReactNode;
 }): JSX.Element {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -46,20 +49,23 @@ export function Composer({
             }
           }}
         />
-        {busy ? (
-          <button type="button" className="btn btn--stop" onClick={onStop}>
-            Stop
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn btn--primary btn--send"
-            onClick={send}
-            disabled={disabled || !value.trim()}
-          >
-            Send
-          </button>
-        )}
+        <div className="composer__controls">
+          {picker}
+          {busy ? (
+            <button type="button" className="btn btn--stop" onClick={onStop}>
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn--primary btn--send"
+              onClick={send}
+              disabled={disabled || !value.trim()}
+            >
+              Send
+            </button>
+          )}
+        </div>
       </div>
       <p className="composer__hint">
         Enter to send · Shift+Enter for a new line · tool calls pause for your approval

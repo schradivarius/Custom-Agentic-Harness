@@ -94,30 +94,36 @@ body {
 
 /* ── target picker ────────────────────────────────────────────────── */
 
-.picker { display: flex; align-items: center; gap: 7px; margin-left: auto; min-width: 0; }
-.picker__label {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
-  color: var(--text-faint); flex: none;
-}
+/* Sits in the composer's controls row, so it stays quiet until hovered —
+   the message is the subject of that box, not the model name. */
+.picker { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .picker__select {
-  font: inherit; font-size: 12.5px; color: var(--text);
-  background: var(--bg-raised); border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm); padding: 4px 26px 4px 9px; cursor: pointer;
-  max-width: 17rem; text-overflow: ellipsis;
+  font: inherit; font-size: 12.5px; color: var(--text-dim);
+  background: transparent; border: 1px solid transparent;
+  border-radius: var(--radius-sm); padding: 4px 24px 4px 8px; cursor: pointer;
+  max-width: 15rem; text-overflow: ellipsis;
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
                     linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 13px) 52%, calc(100% - 9px) 52%;
+  background-position: calc(100% - 12px) 52%, calc(100% - 8px) 52%;
   background-size: 4px 4px, 4px 4px;
   background-repeat: no-repeat;
 }
-.picker__select:hover:not(:disabled) { background-color: var(--bg-sunken); }
+.picker__select:hover:not(:disabled) {
+  color: var(--text); background-color: var(--bg-sunken); border-color: var(--border);
+}
 .picker__select:disabled { opacity: 0.5; cursor: not-allowed; }
 .picker__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .picker__hint {
-  flex: none; font-size: 10.5px; letter-spacing: 0.03em; text-transform: uppercase;
+  flex: none; font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase;
   color: var(--text-faint); border: 1px solid var(--border);
-  padding: 1px 6px; border-radius: 20px; cursor: help;
+  padding: 1px 6px; border-radius: 20px; cursor: help; white-space: nowrap;
+}
+
+/* Visible to screen readers only. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
 /* ── sidebar ──────────────────────────────────────────────────────── */
@@ -359,22 +365,27 @@ body {
 .btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
 .btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .btn--new { margin-left: auto; font-size: 12px; padding: 5px 10px; }
-.btn--stop, .btn--send { flex: none; align-self: flex-end; }
+.btn--stop, .btn--send { flex: none; }
 
 /* ── composer ─────────────────────────────────────────────────────── */
 
 .composer { flex: none; padding: 10px 24px 16px; }
 .composer__box {
-  display: flex; gap: 9px; align-items: flex-end;
+  display: flex; flex-direction: column; gap: 6px;
   max-width: 48rem; margin-inline: auto;
   background: var(--bg-raised); border: 1px solid var(--border-strong);
-  border-radius: 14px; padding: 9px 9px 9px 14px; box-shadow: var(--shadow);
+  border-radius: 14px; padding: 10px 10px 8px 14px; box-shadow: var(--shadow);
 }
 .composer__box:focus-within { border-color: var(--accent); }
 .composer__box textarea {
-  flex: 1; resize: none; border: 0; outline: none; background: none;
-  color: inherit; font: inherit; line-height: 1.55; padding: 5px 0;
-  max-height: 220px; min-width: 0;
+  resize: none; border: 0; outline: none; background: none;
+  color: inherit; font: inherit; line-height: 1.55; padding: 4px 0 2px;
+  max-height: 220px; min-width: 0; width: 100%;
+}
+/* Model picker on the left, send on the right — under the input, as in Claude. */
+.composer__controls {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 9px; min-width: 0;
 }
 .composer__hint {
   max-width: 48rem; margin: 8px auto 0; text-align: center;
@@ -397,8 +408,8 @@ body {
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; }
   .sidebar { display: none; }
-  .picker__label, .picker__hint { display: none; }
-  .picker__select { max-width: 11rem; }
+  .picker__hint { display: none; }
+  .picker__select { max-width: 10rem; }
   .thread { padding: 20px 16px 8px; }
   .composer { padding: 10px 16px 14px; }
 }

@@ -26,7 +26,7 @@ export function TargetPicker({
 
   return (
     <div className="picker">
-      <label className="picker__label" htmlFor="target-select">
+      <label className="picker__label sr-only" htmlFor="target-select">
         Model
       </label>
       <select
