@@ -1,0 +1,14 @@
+{
+  "name": "foundry-desk",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A Claude Desktop-like harness for agents hosted in Microsoft Foundry (Azure AI Foundry)",
+  "workspaces": ["server", "web"],
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "dev": "npm run dev --workspace server & npm run dev --workspace web",
+    "build": "npm run build --workspace web && npm run build --workspace server",
+    "start": "npm run start --workspace server",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web"
+  }
+}

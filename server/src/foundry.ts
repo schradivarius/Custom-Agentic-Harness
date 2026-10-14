@@ -1,0 +1,261 @@
+import { AIProjectClient } from "@azure/ai-projects";
+import { DefaultAzureCredential } from "@azure/identity";
+import type OpenAI from "openai";
+import { config } from "./config.js";
+import { toolSchemasForFoundry } from "./tools.js";
+import { createMockOpenAI, mockHealthDetail, mockTargets } from "./mock.js";
+import {
+  defaultTarget,
+  describeTarget,
+  targetId,
+  type Target,
+  type TargetOption,
+} from "./targets.js";
+
+/**
+ * Thin wrapper over the Foundry project client.
+ *
+ * Two details this exists to absorb:
+ *
+ *  1. Agent reference. A Responses call can be pointed at a hosted agent either
+ *     by binding the agent to the OpenAI client (`azureConfig.agentName`) or by
+ *     overriding the request body per call. The Azure JS samples disagree on the
+ *     body key — `agentFunctionTool.ts` binds on the client, while `agentMcp.ts`
+ *     sends `agent_reference` and the package README shows `agent`. Client
+ *     binding avoids the question, so it is the default; `body` mode is kept for
+ *     projects where binding is unavailable.
+ *
+ *  2. Credentials. DefaultAzureCredential resolves `az login`, managed identity
+ *     or a service principal. Tokens stay in this process and are never sent to
+ *     the browser.
+ */
+
+let project: AIProjectClient | undefined;
+
+/**
+ * One OpenAI client per target. An agent is bound at client construction in
+ * `client` ref mode, so a single shared client cannot serve two agents.
+ */
+const clients = new Map<string, OpenAI>();
+
+export function getProject(): AIProjectClient {
+  if (config.foundry.mock) {
+    throw new Error("The project client is unavailable in mock mode.");
+  }
+  project ??= new AIProjectClient(config.foundry.endpoint, new DefaultAzureCredential());
+  return project;
+}
+
+export function getOpenAI(target: Target = defaultTarget()): OpenAI {
+  const key = targetId(target);
+  const cached = clients.get(key);
+  if (cached) return cached;
+
+  let client: OpenAI;
+  if (config.foundry.mock) {
+    client = createMockOpenAI() as OpenAI;
+  } else {
+    const p = getProject() as any;
+    client =
+      target.kind === "agent" && config.foundry.agentRefMode === "client"
+        ? p.getOpenAIClient({
+            azureConfig: { allowPreview: true, agentName: target.name },
+          })
+        : p.getOpenAIClient();
+  }
+  clients.set(key, client);
+  return client;
+}
+
+/**
+ * The per-request params that address a turn at `target`.
+ *
+ * An agent supplies its own model, instructions and tools, so the request stays
+ * nearly empty. A bare model deployment supplies none of those, so the harness
+ * sends its system prompt and local tool schemas inline — which is what lets
+ * local tools work against any deployed model with no agent version.
+ */
+export function paramsForTarget(target: Target): Record<string, unknown> {
+  if (target.kind === "model") {
+    return {
+      model: target.deployment,
+      instructions: config.foundry.modelInstructions,
+      tools: toolSchemasForFoundry(),
+    };
+  }
+  if (config.foundry.agentRefMode === "client") return {};
+  return {
+    // In `body` mode the reference travels as an extra body field rather than
+    // through the SDK's per-request `body` override, which replaces the payload
+    // rather than extending it. Unknown body keys are passed through untouched.
+    agent_reference: { name: target.name, type: "agent_reference" },
+    ...(config.foundry.modelName ? { model: config.foundry.modelName } : {}),
+  };
+}
+
+/** Does the harness have to execute this target's function tools itself? */
+export function toolSourceFor(target: Target): "agent" | "harness" {
+  return target.kind === "agent" ? "agent" : "harness";
+}
+
+/* ───────────────────────── discovery ───────────────────────── */
+
+/**
+ * Everything this project can be pointed at: the hosted agents, and every model
+ * deployment in the project.
+ *
+ * Both listings are best-effort. A project where the caller cannot enumerate
+ * agents still works — the configured agent is always offered — so a missing
+ * permission degrades the picker rather than breaking the app.
+ */
+export async function listTargets(): Promise<TargetOption[]> {
+  if (config.foundry.mock) return mockTargets();
+
+  const options: TargetOption[] = [];
+  const seen = new Set<string>();
+  const push = (o: TargetOption): void => {
+    if (seen.has(o.id)) return;
+    seen.add(o.id);
+    options.push(o);
+  };
+
+  // The configured agent is always present, listable or not.
+  push({
+    id: `agent:${config.foundry.agentName}`,
+    kind: "agent",
+    label: config.foundry.agentName,
+    isDefault: true,
+    toolSource: "agent",
+  });
+
+  const p = getProject() as any;
+
+  try {
+    const iter = p.agents?.list?.();
+    if (iter) {
+      for await (const a of iter) {
+        const name = String(a?.name ?? "");
+        if (!name) continue;
+        push({
+          id: `agent:${name}`,
+          kind: "agent",
+          label: name,
+          ...(a?.model ? { detail: String(a.model) } : {}),
+          isDefault: name === config.foundry.agentName,
+          toolSource: "agent",
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn("[targets] could not list agents:", err?.message ?? err);
+  }
+
+  try {
+    const iter = p.deployments?.list?.();
+    if (iter) {
+      for await (const d of iter) {
+        if (d?.type !== "ModelDeployment") continue;
+        const name = String(d?.name ?? "");
+        if (!name) continue;
+        const detail = [d?.modelPublisher, d?.modelName].filter(Boolean).join(" · ");
+        push({
+          id: `model:${name}`,
+          kind: "model",
+          label: name,
+          ...(detail ? { detail } : {}),
+          isDefault: false,
+          toolSource: "harness",
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn("[targets] could not list model deployments:", err?.message ?? err);
+  }
+
+  return options;
+}
+
+/* ───────────────────────── agent versions ───────────────────── */
+
+/**
+ * Publish this harness's local function tools as a new version of the agent.
+ *
+ * Foundry only surfaces `function_call` items for tools the agent version
+ * actually declares, so an agent-mode target has to be told about them. Off by
+ * default: if you curate tools in the portal, an unexpected new version is the
+ * last thing you want on boot. Model-mode targets never need this — their tools
+ * are sent inline on every call.
+ */
+export async function syncLocalToolsToAgent(): Promise<{ version: string } | null> {
+  if (config.foundry.mock || !config.foundry.syncTools) return null;
+  if (!config.foundry.modelName) {
+    throw new Error("FOUNDRY_SYNC_TOOLS=true requires FOUNDRY_MODEL_NAME to be set.");
+  }
+  const agents = (getProject() as any).agents;
+  const created = await agents.createVersion(config.foundry.agentName, {
+    kind: "prompt",
+    model: config.foundry.modelName,
+    instructions: config.foundry.modelInstructions,
+    tools: toolSchemasForFoundry(),
+  });
+  return { version: String(created?.version ?? "unknown") };
+}
+
+/* ───────────────────────── conversations ────────────────────── */
+
+export async function createConversation(target?: Target): Promise<string> {
+  const client = getOpenAI(target) as any;
+  const conv = await client.conversations.create({});
+  return String(conv.id);
+}
+
+export async function deleteConversation(id: string, target?: Target): Promise<void> {
+  const client = getOpenAI(target) as any;
+  await client.conversations.delete(id);
+}
+
+export async function appendUserMessage(
+  conversationId: string,
+  text: string,
+  target?: Target,
+): Promise<void> {
+  const client = getOpenAI(target) as any;
+  await client.conversations.items.create(conversationId, {
+    items: [{ type: "message", role: "user", content: text }],
+  });
+}
+
+/* ───────────────────────────── health ───────────────────────── */
+
+export interface HealthReport {
+  ok: boolean;
+  endpoint: string;
+  agentName: string;
+  agentRefMode: string;
+  localTools: string[];
+  detail?: string;
+}
+
+export async function health(): Promise<HealthReport> {
+  const base: Omit<HealthReport, "ok"> = {
+    endpoint: config.foundry.endpoint,
+    agentName: config.foundry.agentName,
+    agentRefMode: config.foundry.agentRefMode,
+    localTools: toolSchemasForFoundry().map((t) => String(t["name"])),
+  };
+  if (config.foundry.mock) {
+    return { ok: true, ...base, detail: mockHealthDetail() };
+  }
+  try {
+    const agents = (getProject() as any).agents;
+    // Cheapest call that proves both credentials and agent name are good.
+    await agents.getVersion?.(config.foundry.agentName).catch(async () => {
+      await agents.get?.(config.foundry.agentName);
+    });
+    return { ok: true, ...base };
+  } catch (err: any) {
+    return { ok: false, ...base, detail: err?.message ?? String(err) };
+  }
+}
+
+export { describeTarget };
