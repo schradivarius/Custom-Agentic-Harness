@@ -45,11 +45,12 @@ const agentName = process.env.FOUNDRY_AGENT_NAME ?? "";
 say(`node                 ${process.version}`);
 say(`endpoint set         ${ok(!!endpoint)}  ${endpoint ? redactHost(endpoint) : ""}`);
 say(`endpoint shape       ${ok(/^https:\/\/[^.]+\.services\.ai\.azure\.com\/api\/projects\/.+/.test(endpoint))}`);
-say(`agent name set       ${ok(!!agentName)}  ${agentName || ""}`);
+say(`agent name set       ${agentName ? "ok" : "–"}   ${agentName || "(not set — will list what the project has)"}`);
 say(`agent ref mode       ${process.env.FOUNDRY_AGENT_REF_MODE || "client (default)"}`);
 
-if (!endpoint || !agentName) {
-  say("\nSet FOUNDRY_PROJECT_ENDPOINT and FOUNDRY_AGENT_NAME in .env, then re-run.");
+if (!endpoint) {
+  say("\nSet FOUNDRY_PROJECT_ENDPOINT in .env, then re-run.");
+  say("Foundry portal -> your project -> Overview -> project endpoint.");
   process.exit(1);
 }
 
@@ -85,6 +86,58 @@ if (reachable && credential) {
     const { AIProjectClient } = await import("@azure/ai-projects");
     const project = new AIProjectClient(endpoint, credential);
     const agents = project.agents;
+
+    /* What the project holds — the answer to "what do I put in .env?" */
+    say(`\nagents in this project`);
+    const agentNames = [];
+    try {
+      const iter = agents.list?.();
+      if (!iter) {
+        say("  (this SDK build exposes no agents.list)");
+      } else {
+        for await (const a of iter) {
+          const n = String(a?.name ?? "");
+          if (!n) continue;
+          agentNames.push(n);
+          const tools = a?.tools ?? [];
+          const fns = tools.filter((t) => t.type === "function").map((t) => t.name);
+          say(
+            `  · ${n}${a?.model ? `  [${a.model}]` : ""}` +
+              `  tools: ${tools.length}${fns.length ? ` (fn: ${fns.join(", ")})` : ""}`,
+          );
+        }
+        if (agentNames.length === 0) say("  (none — create one in the portal, or use a model deployment below)");
+      }
+    } catch (err) {
+      say(`  could not list: ${String(err?.message ?? err).slice(0, 110)}`);
+    }
+
+    say(`\nmodel deployments in this project`);
+    const deploymentNames = [];
+    try {
+      for await (const d of project.deployments.list()) {
+        if (d?.type !== "ModelDeployment") continue;
+        deploymentNames.push(String(d.name));
+        say(`  · ${d.name}  [${[d.modelPublisher, d.modelName].filter(Boolean).join(" / ")}]`);
+      }
+      if (deploymentNames.length === 0) say("  (none deployed)");
+    } catch (err) {
+      say(`  could not list: ${String(err?.message ?? err).slice(0, 110)}`);
+    }
+
+    if (!agentName) {
+      say("\nFOUNDRY_AGENT_NAME is not set, so the agent checks are skipped.");
+      if (agentNames.length) {
+        say(`Pick one of the agents above, e.g.  FOUNDRY_AGENT_NAME=${agentNames[0]}`);
+      } else if (deploymentNames.length) {
+        say("No agents exist yet. Either create one in the portal, or set");
+        say(`  FOUNDRY_AGENT_NAME=foundry-desk  FOUNDRY_MODEL_NAME=${deploymentNames[0]}  FOUNDRY_SYNC_TOOLS=true`);
+        say("and the harness will create it, with its local tools declared.");
+      }
+      say("\n" + "=".repeat(52));
+      say("Safe to paste: no tokens, keys or full hostnames above.");
+      process.exit(0);
+    }
 
     say(`\nagent lookup "${agentName}"`);
     let found = null;

@@ -199,11 +199,13 @@ will never call it.
 running server (`SMOKE_BASE` to point elsewhere), `test-containment.mjs` needs
 `npm run build --workspace server` first.
 
-`doctor.mjs` is the opposite: point it at a real project. It checks the
-endpoint shape, host reachability, the credential chain, whether your agent
-declares any function tools, and a live conversation round trip. It prints no
-tokens and redacts the hostname, so the output is safe to share when something
-needs debugging.
+`doctor.mjs` is the opposite: point it at a real project. With only
+`FOUNDRY_PROJECT_ENDPOINT` set it lists the agents and model deployments the
+project actually holds, so you know what to put in `FOUNDRY_AGENT_NAME`. Add
+that and it also checks the credential chain, whether the agent declares any
+function tools, and a live conversation round trip. It prints no tokens and
+redacts the hostname, so the output is safe to share when something needs
+debugging.
 
 ## Branding
 
