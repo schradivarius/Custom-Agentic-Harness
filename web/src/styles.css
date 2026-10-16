@@ -209,10 +209,9 @@ body {
 
 /* Two marks, swapped by theme in the markup: the "A" is white on dark and
    Aurora's logo gray on light, so it never needs a backing plate. */
-.brandmark { display: block; width: 28px; height: auto; flex: none; }
-.brandname {
-  font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--text);
-}
+/* Standing alone it carries the whole corner, so it sits a little larger
+   than it did beside a wordmark. */
+.brandmark { display: block; width: 34px; height: auto; flex: none; }
 
 .status { display: flex; align-items: center; gap: 7px; }
 .status__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }

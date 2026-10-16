@@ -131,9 +131,10 @@ export function Sidebar({
           {/* The artwork comes as a pair: the "A" is white for dark
               backgrounds and Aurora's logo gray for light ones. */}
           <source srcSet="/brand/aurora-mark-dark.png" media="(prefers-color-scheme: dark)" />
-          <img className="brandmark" src="/brand/aurora-mark-light.png" alt="" />
+          {/* The mark now stands alone, so it carries the name for anyone
+              who cannot see it — it is no longer decorative. */}
+          <img className="brandmark" src="/brand/aurora-mark-light.png" alt="Aurora" />
         </picture>
-        <span className="brandname">Aurora</span>
       </div>
 
       <nav className="rail__nav" aria-label="Sections">
