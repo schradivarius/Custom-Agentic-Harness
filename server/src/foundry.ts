@@ -32,11 +32,19 @@ import {
 
 let project: AIProjectClient | undefined;
 
+/** How the agent reference actually travels, once known. */
+export type RefMode = "client" | "body";
+
 /**
- * One OpenAI client per target. An agent is bound at client construction in
- * `client` ref mode, so a single shared client cannot serve two agents.
+ * One OpenAI client per (target, ref mode). An agent is bound at client
+ * construction in `client` mode, so a single shared client cannot serve two
+ * agents — nor both modes for one agent while we are probing which works.
  */
 const clients = new Map<string, OpenAI>();
+
+/** Result of the one-time probe, when FOUNDRY_AGENT_REF_MODE=auto. */
+let probed: RefMode | undefined;
+let probeInFlight: Promise<RefMode> | undefined;
 
 export function getProject(): AIProjectClient {
   if (config.foundry.mock) {
@@ -46,8 +54,8 @@ export function getProject(): AIProjectClient {
   return project;
 }
 
-export function getOpenAI(target: Target = defaultTarget()): OpenAI {
-  const key = targetId(target);
+export function getOpenAI(target: Target = defaultTarget(), mode: RefMode = "client"): OpenAI {
+  const key = `${targetId(target)}|${mode}`;
   const cached = clients.get(key);
   if (cached) return cached;
 
@@ -57,7 +65,7 @@ export function getOpenAI(target: Target = defaultTarget()): OpenAI {
   } else {
     const p = getProject() as any;
     client =
-      target.kind === "agent" && config.foundry.agentRefMode === "client"
+      target.kind === "agent" && mode === "client"
         ? p.getOpenAIClient({
             azureConfig: { allowPreview: true, agentName: target.name },
           })
@@ -68,6 +76,57 @@ export function getOpenAI(target: Target = defaultTarget()): OpenAI {
 }
 
 /**
+ * Settle how the agent reference travels, once per process.
+ *
+ * The Azure JS samples disagree: `agentFunctionTool.ts` binds the agent to the
+ * client, `agentMcp.ts` sends `agent_reference` in the body, and the package
+ * README shows `agent`. Rather than make that a setting someone has to debug
+ * on their first run, `auto` sends one tiny request each way and keeps
+ * whichever the project accepts. Pin `client` or `body` to skip the probe.
+ */
+export async function ensureAgentRefMode(target: Target): Promise<RefMode> {
+  // A bare model deployment carries no agent reference at all.
+  if (target.kind !== "agent") return "client";
+  if (config.foundry.agentRefMode !== "auto") return config.foundry.agentRefMode;
+  if (config.foundry.mock && !config.foundry.mockRefMode) return "client";
+  if (probed) return probed;
+  if (probeInFlight) return probeInFlight;
+
+  probeInFlight = (async (): Promise<RefMode> => {
+    const errors: string[] = [];
+    for (const mode of ["client", "body"] as const) {
+      try {
+        const client = getOpenAI(target, mode) as any;
+        await client.responses.create({
+          ...paramsForTarget(target, mode),
+          input: [{ type: "message", role: "user", content: "ping" }],
+          max_output_tokens: 16,
+        });
+        probed = mode;
+        console.log(`[foundry] agent reference mode resolved to "${mode}"`);
+        return mode;
+      } catch (err: any) {
+        errors.push(`${mode}: ${String(err?.message ?? err).slice(0, 160)}`);
+      }
+    }
+    // Both failed — the cause is almost certainly not the reference shape
+    // (bad credential, wrong agent name, no access). Fall back to the
+    // documented default and let the real call report the real error.
+    console.warn(`[foundry] could not resolve agent reference mode:\n  ${errors.join("\n  ")}`);
+    probeInFlight = undefined;
+    return "client";
+  })();
+
+  return probeInFlight;
+}
+
+/** The mode in effect, for display. "auto" until the probe has run. */
+export function currentAgentRefMode(): string {
+  if (config.foundry.agentRefMode !== "auto") return config.foundry.agentRefMode;
+  return probed ? `auto → ${probed}` : "auto (unresolved)";
+}
+
+/**
  * The per-request params that address a turn at `target`.
  *
  * An agent supplies its own model, instructions and tools, so the request stays
@@ -75,7 +134,7 @@ export function getOpenAI(target: Target = defaultTarget()): OpenAI {
  * sends its system prompt and local tool schemas inline — which is what lets
  * local tools work against any deployed model with no agent version.
  */
-export function paramsForTarget(target: Target): Record<string, unknown> {
+export function paramsForTarget(target: Target, mode: RefMode = "client"): Record<string, unknown> {
   if (target.kind === "model") {
     return {
       model: target.deployment,
@@ -83,7 +142,7 @@ export function paramsForTarget(target: Target): Record<string, unknown> {
       tools: toolSchemasForFoundry(),
     };
   }
-  if (config.foundry.agentRefMode === "client") return {};
+  if (mode === "client") return {};
   return {
     // In `body` mode the reference travels as an extra body field rather than
     // through the SDK's per-request `body` override, which replaces the payload
@@ -240,7 +299,7 @@ export async function health(): Promise<HealthReport> {
   const base: Omit<HealthReport, "ok"> = {
     endpoint: config.foundry.endpoint,
     agentName: config.foundry.agentName,
-    agentRefMode: config.foundry.agentRefMode,
+    agentRefMode: currentAgentRefMode(),
     localTools: toolSchemasForFoundry().map((t) => String(t["name"])),
   };
   if (config.foundry.mock) {

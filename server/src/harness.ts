@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { approvalGate } from "./approvals.js";
-import { getOpenAI, paramsForTarget } from "./foundry.js";
+import { ensureAgentRefMode, getOpenAI, paramsForTarget } from "./foundry.js";
 import { defaultTarget, targetId, type Target } from "./targets.js";
 import { registry } from "./tools.js";
 import { store } from "./store.js";
@@ -73,7 +73,9 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
   const { conversationId, userText, sessionId, emit, signal } = opts;
   const target = opts.target ?? defaultTarget();
   const tid = targetId(target);
-  const client = getOpenAI(target) as any;
+  // Settles how the agent reference travels; a no-op after the first turn.
+  const refMode = await ensureAgentRefMode(target);
+  const client = getOpenAI(target, refMode) as any;
 
   store.appendTurn({
     conversationId,
@@ -84,7 +86,7 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
   });
 
   let params: Record<string, unknown> = {
-    ...paramsForTarget(target),
+    ...paramsForTarget(target, refMode),
     conversation: conversationId,
     input: [{ type: "message", role: "user", content: userText }],
   };
@@ -266,7 +268,7 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
     // A bare model deployment carries nothing server-side, so its model,
     // instructions and tools go out again on every continuation round.
     params = {
-      ...paramsForTarget(target),
+      ...paramsForTarget(target, refMode),
       input: continuation,
       previous_response_id: responseId,
     };

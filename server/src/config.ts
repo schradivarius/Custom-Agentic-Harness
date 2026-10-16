@@ -57,6 +57,16 @@ function list(name: string, fallback: string[]): string[] {
  */
 const mock = bool("FOUNDRY_MOCK", false);
 
+/**
+ * Test fixture: in mock mode, make the fake project accept ONLY this agent
+ * reference shape, so the auto-probe can be exercised without Azure.
+ * Unset (the normal case) means the mock accepts anything.
+ */
+const mockRefMode = process.env["FOUNDRY_MOCK_REF_MODE"]?.trim().toLowerCase() || "";
+if (mockRefMode && mockRefMode !== "client" && mockRefMode !== "body") {
+  throw new Error(`FOUNDRY_MOCK_REF_MODE must be "client" or "body", got "${mockRefMode}".`);
+}
+
 function reqUnlessMock(name: string, mockValue: string): string {
   return mock ? (process.env[name]?.trim() || mockValue) : req(name);
 }
@@ -80,9 +90,12 @@ fs.mkdirSync(workspaceRoot, { recursive: true });
 const dataDir = path.resolve(process.env["DATA_DIR"]?.trim() || "./data");
 fs.mkdirSync(dataDir, { recursive: true });
 
-const agentRefModeRaw = (process.env["FOUNDRY_AGENT_REF_MODE"]?.trim() || "client").toLowerCase();
-if (agentRefModeRaw !== "client" && agentRefModeRaw !== "body") {
-  throw new Error(`FOUNDRY_AGENT_REF_MODE must be "client" or "body", got "${agentRefModeRaw}".`);
+const AGENT_REF_MODES = ["auto", "client", "body"] as const;
+const agentRefModeRaw = (process.env["FOUNDRY_AGENT_REF_MODE"]?.trim() || "auto").toLowerCase();
+if (!(AGENT_REF_MODES as readonly string[]).includes(agentRefModeRaw)) {
+  throw new Error(
+    `FOUNDRY_AGENT_REF_MODE must be one of ${AGENT_REF_MODES.join(", ")}, got "${agentRefModeRaw}".`,
+  );
 }
 
 export const config = {
@@ -90,11 +103,12 @@ export const config = {
 
   foundry: {
     mock,
+    mockRefMode: mockRefMode as "" | "client" | "body",
     endpoint: reqUnlessMock("FOUNDRY_PROJECT_ENDPOINT", "mock://foundry-desk"),
     agentName: reqUnlessMock("FOUNDRY_AGENT_NAME", "mock-agent"),
     /** Optional: only needed to create agent versions or to call a bare model. */
     modelName: process.env["FOUNDRY_MODEL_NAME"]?.trim() || "",
-    agentRefMode: agentRefModeRaw as "client" | "body",
+    agentRefMode: agentRefModeRaw as "auto" | "client" | "body",
     syncTools: bool("FOUNDRY_SYNC_TOOLS", false),
     /**
      * System prompt used when a turn is addressed to a bare model deployment

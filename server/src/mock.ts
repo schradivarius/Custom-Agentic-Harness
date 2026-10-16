@@ -1,5 +1,24 @@
 import { randomUUID } from "node:crypto";
 import type { TargetOption } from "./targets.js";
+import { config } from "./config.js";
+
+/**
+ * When FOUNDRY_MOCK_REF_MODE is set, reject the shape the simulated project
+ * does not accept — the same way a real project rejects the wrong one.
+ */
+function enforceRefMode(params: any): void {
+  const want = config.foundry.mockRefMode;
+  if (!want) return;
+  const hasRef = Boolean(params?.agent_reference);
+  if (want === "body" && !hasRef) {
+    throw Object.assign(new Error("Unknown agent: request carried no agent_reference."), {
+      status: 404,
+    });
+  }
+  if (want === "client" && hasRef) {
+    throw Object.assign(new Error("Unexpected body field: agent_reference."), { status: 400 });
+  }
+}
 
 /**
  * A scripted stand-in for the Foundry Responses API.
@@ -149,7 +168,17 @@ export function createMockOpenAI(): any {
       },
     },
     responses: {
+      /** Non-streaming — used by the agent-reference probe. */
+      create: async (params: any) => {
+        enforceRefMode(params);
+        return {
+          id: `resp_probe_${randomUUID().slice(0, 8)}`,
+          output: [],
+          output_text: "pong",
+        };
+      },
       stream: (params: any) => {
+        enforceRefMode(params);
         const responseId = `resp_mock_${randomUUID().slice(0, 8)}`;
 
         // First round carries the user message; continuations carry tool output.

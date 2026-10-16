@@ -193,6 +193,7 @@ will never call it.
 | `npm start --workspace server` | serve the built UI from the server |
 | `node scripts/doctor.mjs` | check a **real** Foundry connection; prints a paste-safe report |
 | `node scripts/smoke.mjs` | end-to-end: streaming, approve, deny, MCP, persistence |
+| `node scripts/test-agent-ref-probe.mjs` | the agent-reference auto-probe, both outcomes |
 | `node scripts/test-containment.mjs` | the workspace boundary, on its own |
 
 `smoke.mjs` and `test-containment.mjs` expect mock mode — `smoke.mjs` needs a
@@ -277,8 +278,13 @@ the `@azure/ai-projects` 2.8.0 README and its `agentFunctionTool.ts`,
 `agentMcp.ts` and `responseStream.ts` samples. Expect to adjust `foundry.ts`
 when you first connect — that file exists to be the only place you'd need to.
 
-One known ambiguity it already absorbs: the Azure samples disagree on how to
-attach the agent reference. `agentFunctionTool.ts` binds it to the client;
+One known ambiguity it resolves by itself: the Azure samples disagree on how
+to attach the agent reference. `agentFunctionTool.ts` binds it to the client;
 `agentMcp.ts` sends `body: { agent_reference: … }`; the README shows
-`body: { agent: … }`. Client binding is the default and sidesteps it;
-`FOUNDRY_AGENT_REF_MODE=body` switches if your project needs it.
+`body: { agent: … }`. Rather than make that a setting to debug on a first run,
+`FOUNDRY_AGENT_REF_MODE=auto` (the default) sends one tiny request each way on
+first use and keeps whichever the project accepts, logging the result. Pin
+`client` or `body` to skip the probe. `scripts/doctor.mjs` reports the same
+finding before you start the server, and
+`scripts/test-agent-ref-probe.mjs` covers the decision logic against a mock
+project rigged to accept exactly one shape.

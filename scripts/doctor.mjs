@@ -157,10 +157,42 @@ if (reachable && credential) {
       say(`  local fn tools     ${fns.length ? fns.join(", ") : "NONE — the model cannot call local tools"}`);
     }
 
+    /* Which agent-reference shape does this project accept? The harness
+       probes this at runtime; report it here so it is known up front. */
+    say(`\nagent reference shape`);
+    let workingMode = null;
+    for (const mode of ["client", "body"]) {
+      const c =
+        mode === "client"
+          ? project.getOpenAIClient({ azureConfig: { allowPreview: true, agentName } })
+          : project.getOpenAIClient();
+      const extra =
+        mode === "body"
+          ? { agent_reference: { name: agentName, type: "agent_reference" } }
+          : {};
+      try {
+        await c.responses.create({
+          ...extra,
+          input: [{ type: "message", role: "user", content: "ping" }],
+          max_output_tokens: 16,
+        });
+        say(`  ${mode.padEnd(7)} ok`);
+        workingMode ??= mode;
+      } catch (err) {
+        say(`  ${mode.padEnd(7)} FAIL  ${String(err?.message ?? err).slice(0, 100)}`);
+      }
+    }
+    if (workingMode) {
+      say(`  → the harness will use "${workingMode}" (FOUNDRY_AGENT_REF_MODE=auto)`);
+    } else {
+      say("  → neither shape worked; the cause is probably credentials or agent name, not shape");
+    }
+
     say(`\nresponses round trip`);
-    const openai = project.getOpenAIClient({
-      azureConfig: { allowPreview: true, agentName },
-    });
+    const openai =
+      workingMode === "body"
+        ? project.getOpenAIClient()
+        : project.getOpenAIClient({ azureConfig: { allowPreview: true, agentName } });
     const conv = await openai.conversations.create({});
     say(`  conversation       ok  (${String(conv.id).slice(0, 14)}…)`);
     const resp = await openai.responses.create({
