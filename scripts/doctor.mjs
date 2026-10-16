@@ -9,6 +9,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import path from "node:path";
 
 // Load .env without a dependency, so doctor runs before npm install if need be.
@@ -65,19 +66,66 @@ try {
   say(`host reachable       FAIL  ${String(err?.message ?? err).slice(0, 90)}`);
 }
 
-/* 3 — credential */
+/* 3 — credential.
+   The SDK uses this scope; doctor must ask for the same one or it would
+   report a failure the harness would never hit. */
+const SCOPE = "https://ai.azure.com/.default";
+
+function sh(cmd, args) {
+  return new Promise((resolve) => {
+    const c = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    c.stdout.on("data", (d) => (out += d));
+    c.stderr.on("data", (d) => (out += d));
+    c.on("error", () => resolve(null));
+    c.on("close", (code) => resolve(code === 0 ? out.trim() : null));
+    setTimeout(() => { try { c.kill(); } catch { /* gone */ } resolve(null); }, 15000);
+  });
+}
+
 let credential;
 try {
   const { DefaultAzureCredential } = await import("@azure/identity");
   credential = new DefaultAzureCredential();
-  const token = await credential.getToken("https://ai.azure.com/.default");
+  const token = await credential.getToken(SCOPE);
   const claims = JSON.parse(Buffer.from(token.token.split(".")[1], "base64url").toString());
   say(`credential           ok  (expires ${new Date(token.expiresOnTimestamp).toISOString()})`);
   say(`  identity kind      ${claims.idtyp ?? (claims.appid ? "service principal" : "user")}`);
   say(`  tenant             ${String(claims.tid ?? "").slice(0, 8)}…`);
 } catch (err) {
-  say(`credential           FAIL  ${String(err?.message ?? err).slice(0, 160)}`);
-  say("  → run `az login`, or set AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_CLIENT_SECRET");
+  credential = undefined;
+  say(`credential           FAIL`);
+
+  /* DefaultAzureCredential is a chain; the headline names only the first link
+     that was unavailable, which is rarely the useful one. Pinpoint it. */
+  const azPath = await sh("which", ["az"]);
+  say(`  az on PATH         ${azPath ? azPath.split("\n")[0] : "NOT FOUND — install the Azure CLI"}`);
+
+  if (azPath) {
+    const acct = await sh("az", ["account", "show", "--output", "json"]);
+    if (!acct) {
+      say("  az signed in       NO  → run: az login --use-device-code");
+    } else {
+      try {
+        const a = JSON.parse(acct);
+        say(`  az signed in       yes  (${a.user?.name ?? a.user?.type ?? "?"})`);
+        say(`  az tenant          ${String(a.tenantId ?? "").slice(0, 8)}…`);
+      } catch {
+        say("  az signed in       yes (unparseable account output)");
+      }
+      // Signed in but the chain still failed — try the CLI link on its own.
+      try {
+        const { AzureCliCredential } = await import("@azure/identity");
+        await new AzureCliCredential().getToken(SCOPE);
+        say("  AzureCliCredential ok — re-run doctor; the chain should now pass");
+      } catch (e2) {
+        say(`  AzureCliCredential FAIL  ${String(e2?.message ?? e2).slice(0, 220)}`);
+        say("  → your login has no access to this scope. Check the tenant:");
+        say("      az login --use-device-code --tenant <tenant-id-of-the-project>");
+      }
+    }
+  }
+  say("  (or set AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_CLIENT_SECRET for a service principal)");
 }
 
 /* 4 — the agent itself */
