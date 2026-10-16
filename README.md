@@ -194,6 +194,9 @@ will never call it.
 | `node scripts/doctor.mjs` | check a **real** Foundry connection; prints a paste-safe report |
 | `node scripts/smoke.mjs` | end-to-end: streaming, approve, deny, MCP, persistence |
 | `node scripts/test-agent-ref-probe.mjs` | the agent-reference auto-probe, both outcomes |
+
+Set `FOUNDRY_DEBUG=1` to log each round's output item types and call ids. That
+is the first thing to look at when a turn fails with a tool-call error.
 | `node scripts/test-containment.mjs` | the workspace boundary, on its own |
 
 `smoke.mjs` and `test-containment.mjs` expect mock mode — `smoke.mjs` needs a

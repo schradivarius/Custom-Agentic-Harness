@@ -137,6 +137,48 @@ function wasRefused(input: any[]): boolean {
 
 const scripts = new Map<string, Script[]>();
 
+/** call_ids each response handed out, so continuations can be validated. */
+const issued = new Map<string, Set<string>>();
+
+/**
+ * Reject a continuation the way the service does.
+ *
+ * A real project answers a mismatched or missing tool output with
+ * `400 No tool output found for function call call_…`. Enforcing the same
+ * contract here means the harness cannot regress to sending the wrong id —
+ * `call_id` and `id` are different fields on a function_call item and are
+ * easy to confuse.
+ */
+function enforceToolOutputs(params: any): void {
+  const prev = params?.previous_response_id;
+  if (typeof prev !== "string") return;
+  const expected = issued.get(prev);
+  if (!expected || expected.size === 0) return;
+
+  const input: any[] = Array.isArray(params?.input) ? params.input : [];
+  const got = new Set<string>(
+    input
+      .filter((i: any) => i?.type === "function_call_output")
+      .map((i: any) => String(i.call_id)),
+  );
+
+  for (const id of expected) {
+    if (!got.has(id)) {
+      throw Object.assign(new Error(`No tool output found for function call ${id}.`), {
+        status: 400,
+      });
+    }
+  }
+  for (const id of got) {
+    if (!expected.has(id)) {
+      throw Object.assign(
+        new Error(`Unexpected tool output for unknown function call ${id}.`),
+        { status: 400 },
+      );
+    }
+  }
+}
+
 async function* streamScript(script: Script, responseId: string): AsyncGenerator<unknown> {
   yield { type: "response.created", response: { id: responseId } };
 
@@ -171,6 +213,7 @@ export function createMockOpenAI(): any {
       /** Non-streaming — used by the agent-reference probe. */
       create: async (params: any) => {
         enforceRefMode(params);
+        enforceToolOutputs(params);
         return {
           id: `resp_probe_${randomUUID().slice(0, 8)}`,
           output: [],
@@ -179,6 +222,7 @@ export function createMockOpenAI(): any {
       },
       stream: (params: any) => {
         enforceRefMode(params);
+        enforceToolOutputs(params);
         const responseId = `resp_mock_${randomUUID().slice(0, 8)}`;
 
         // First round carries the user message; continuations carry tool output.
@@ -208,6 +252,14 @@ export function createMockOpenAI(): any {
         const current: Script = userMessage ? { ...head, text: who + head.text } : head;
         const rest = queue.slice(1);
         if (rest.length) scripts.set(responseId, rest);
+
+        // Remember what this response asks to be answered.
+        const calls = new Set<string>(
+          (current.output ?? [])
+            .filter((o: MockItem) => o.type === "function_call")
+            .map((o: MockItem) => String(o["call_id"])),
+        );
+        if (calls.size) issued.set(responseId, calls);
 
         const iterator = streamScript(current, responseId);
         let settled: any;

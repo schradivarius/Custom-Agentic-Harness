@@ -141,12 +141,38 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
 
     const output: any[] = Array.isArray(final.output) ? final.output : [];
     const continuation: ContinuationItem[] = [];
+    /** call_ids answered this round, to reconcile against the response. */
+    const answered = new Set<string>();
+
+    if (process.env["FOUNDRY_DEBUG"]) {
+      console.log(
+        `[harness] round ${round} output:`,
+        output
+          .map((i: any) => `${i?.type}${i?.call_id ? `(${i.call_id})` : ""}`)
+          .join(", ") || "(empty)",
+      );
+    }
 
     for (const item of output) {
       /* ── Local function tools: this harness executes them ───────────── */
       if (item?.type === "function_call") {
+        /* `call_id` and `id` are different fields: the service matches tool
+           output on `call_id` (call_…), while `id` identifies the output item
+           itself (fc_…). Submitting the wrong one is rejected with
+           "No tool output found for function call call_…", so the id that
+           goes back to the service is never substituted — only the id the UI
+           keys on falls back. */
+        const apiCallId =
+          typeof item.call_id === "string" && item.call_id ? item.call_id : undefined;
+        if (!apiCallId) {
+          console.warn(
+            `[harness] function_call "${item.name}" arrived without a call_id; ` +
+              `keys present: ${Object.keys(item ?? {}).join(", ")}`,
+          );
+        }
+
         const call: ToolCallView = {
-          id: String(item.call_id ?? item.id ?? randomUUID()),
+          id: apiCallId ?? String(item.id ?? randomUUID()),
           name: String(item.name ?? "unknown"),
           origin: "local",
           args: parseArgs(item.arguments),
@@ -158,9 +184,10 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
         roundResults.push(result);
         emit({ type: "tool.result", result });
 
+        if (apiCallId) answered.add(apiCallId);
         continuation.push({
           type: "function_call_output",
-          call_id: call.id,
+          call_id: apiCallId ?? call.id,
           output: result.ok
             ? result.output
             : JSON.stringify({ error: result.output, denied: result.denied ?? false }),
@@ -245,6 +272,27 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
         });
         emit({ type: "tool.result", result });
       }
+    }
+
+    /* Every function_call in the response must come back with output, or the
+       next request is rejected outright and the whole turn is lost. If one
+       slipped past the loop above, answer it with an error rather than let
+       that happen — a failed tool is recoverable, a rejected request is not. */
+    for (const item of output) {
+      if (item?.type !== "function_call") continue;
+      const id = typeof item.call_id === "string" ? item.call_id : "";
+      if (!id || answered.has(id)) continue;
+      console.warn(
+        `[harness] no output was produced for function_call ${id} ("${item.name}"); ` +
+          `returning an error for it so the turn can continue`,
+      );
+      continuation.push({
+        type: "function_call_output",
+        call_id: id,
+        output: JSON.stringify({
+          error: "The harness produced no output for this tool call.",
+        }),
+      });
     }
 
     /* Nothing left to satisfy — the turn is done. */
