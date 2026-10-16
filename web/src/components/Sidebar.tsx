@@ -127,12 +127,13 @@ export function Sidebar({
   return (
     <aside className="rail">
       <div className="rail__head">
-        <span className="logo-plaque">
-          <img
-            src="/brand/logo-primary.png"
-            alt="Aurora Technical Services, LLC — engineering and construction management"
-          />
-        </span>
+        <picture>
+          {/* The artwork comes as a pair: the "A" is white for dark
+              backgrounds and Aurora's logo gray for light ones. */}
+          <source srcSet="/brand/aurora-mark-dark.png" media="(prefers-color-scheme: dark)" />
+          <img className="brandmark" src="/brand/aurora-mark-light.png" alt="" />
+        </picture>
+        <span className="brandname">Aurora</span>
       </div>
 
       <nav className="rail__nav" aria-label="Sections">
