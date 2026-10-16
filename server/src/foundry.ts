@@ -216,6 +216,11 @@ export async function listTargets(): Promise<TargetOption[]> {
         if (d?.type !== "ModelDeployment") continue;
         const name = String(d?.name ?? "");
         if (!name) continue;
+        // Embedding deployments show up in the same listing but cannot hold a
+        // conversation; offering one as a chat target only produces a
+        // confusing error when it is picked. Name-based because the listing
+        // carries no capability field to test.
+        if (/embed/i.test(name) || /embed/i.test(String(d?.modelName ?? ""))) continue;
         const detail = [d?.modelPublisher, d?.modelName].filter(Boolean).join(" · ");
         push({
           id: `model:${name}`,
