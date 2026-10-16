@@ -13,6 +13,7 @@ import type {
   HarnessEvent,
   HealthReport,
   TargetOption,
+  ToolInfo,
 } from "./types.ts";
 
 let seq = 0;
@@ -29,6 +30,7 @@ export default function App(): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [targets, setTargets] = useState<TargetOption[]>([]);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
   const [targetId, setTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
@@ -71,6 +73,10 @@ export default function App(): JSX.Element {
         setTargetId((cur) => cur ?? list.find((t) => t.isDefault)?.id ?? list[0]?.id ?? null);
       })
       .catch((err: unknown) => console.warn("could not list targets", err));
+    void api
+      .listTools()
+      .then(setTools)
+      .catch((err: unknown) => console.warn("could not list tools", err));
     void refreshConversations();
   }, [refreshConversations]);
 
@@ -312,6 +318,8 @@ export default function App(): JSX.Element {
         conversations={conversations}
         activeId={activeId}
         health={health}
+        targets={targets}
+        tools={tools}
         onSelect={(id) =>
           void openConversation(id, conversations.find((c) => c.id === id)?.targetId)
         }

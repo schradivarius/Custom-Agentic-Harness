@@ -82,6 +82,13 @@ export interface TargetOption {
   toolSource: "agent" | "harness";
 }
 
+export interface ToolInfo {
+  name: string;
+  description: string;
+  risk: RiskTier;
+  autoApproved: boolean;
+}
+
 export interface HealthReport {
   ok: boolean;
   endpoint: string;

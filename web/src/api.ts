@@ -5,6 +5,7 @@ import type {
   HealthReport,
   StoredTurn,
   TargetOption,
+  ToolInfo,
 } from "./types.ts";
 
 async function json<T>(res: Response): Promise<T> {
@@ -25,6 +26,8 @@ export const api = {
   health: (): Promise<HealthReport> => fetch("/api/health").then(json<HealthReport>),
 
   listTargets: (): Promise<TargetOption[]> => fetch("/api/targets").then(json<TargetOption[]>),
+
+  listTools: (): Promise<ToolInfo[]> => fetch("/api/tools").then(json<ToolInfo[]>),
 
   listConversations: (): Promise<ConversationMeta[]> =>
     fetch("/api/conversations").then(json<ConversationMeta[]>),
