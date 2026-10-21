@@ -74,9 +74,18 @@ body {
 
 /* ── layout ───────────────────────────────────────────────────────── */
 
-.app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
+/* The window never scrolls: the sidebar and the thread each scroll inside
+   their own pane. Without this, a short viewport pushes the page taller than
+   the screen and the sidebar scrolls away with it. */
+.app {
+  display: grid; grid-template-columns: 260px 1fr;
+  height: 100dvh; max-height: 100dvh; overflow: hidden;
+}
 
-.main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.main {
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0; height: 100%;
+}
 
 .topbar {
   display: flex; align-items: center; gap: 12px;
@@ -88,7 +97,10 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-.thread { flex: 1; overflow-y: auto; padding: 28px 24px 8px; scroll-behavior: smooth; }
+.thread {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 28px 24px 8px; scroll-behavior: smooth;
+}
 .thread > * { max-width: 46rem; margin-inline: auto; }
 
 /* ── model picker ─────────────────────────────────────────────────
@@ -145,7 +157,7 @@ body {
 }
 .newchat:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
 
-.side__list { flex: 1; overflow-y: auto; padding: 4px 8px 10px; }
+.side__list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 10px; }
 .side__empty { color: var(--text-faint); font-size: 13px; padding: 6px 8px; margin: 0; }
 .side__group { margin-bottom: 14px; }
 .side__grouphead {
@@ -436,7 +448,7 @@ body {
 
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; }
-  .rail { display: none; }
+  .side { display: none; }
   .picker__hint { display: none; }
   .picker__select { max-width: 11rem; }
   .thread { padding: 20px 16px 8px; }

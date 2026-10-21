@@ -194,6 +194,11 @@ will never call it.
 | `node scripts/doctor.mjs` | check a **real** Foundry connection; prints a paste-safe report |
 | `node scripts/smoke.mjs` | end-to-end: streaming, approve, deny, MCP, persistence |
 | `node scripts/test-agent-ref-probe.mjs` | the agent-reference auto-probe, both outcomes |
+| `node scripts/test-layout.mjs` | the window never scrolls; panes scroll inside themselves |
+
+`test-layout.mjs` needs a running server (`LAYOUT_BASE`, default
+`http://localhost:4300`) and Playwright, which is not a dependency — it skips
+cleanly when Playwright is absent.
 
 Set `FOUNDRY_DEBUG=1` to log each round's output item types and call ids. That
 is the first thing to look at when a turn fails with a tool-call error.
