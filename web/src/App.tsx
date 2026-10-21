@@ -35,7 +35,6 @@ export default function App(): JSX.Element {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
-  const [reasoning, setReasoning] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -102,9 +101,6 @@ export default function App(): JSX.Element {
       const last = out[out.length - 1];
 
       switch (event.type) {
-        case "reasoning.delta":
-          return out; // handled outside the reducer, see setReasoning below
-
         case "text.delta": {
           if (last?.kind === "assistant" && last.streaming) {
             out[out.length - 1] = { ...last, text: last.text + event.delta };
@@ -205,7 +201,6 @@ export default function App(): JSX.Element {
     async (text: string) => {
       setBlocks((prev) => [...prev, { kind: "user", id: nextId(), text }]);
       setBusy(true);
-      setReasoning(false);
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -223,8 +218,6 @@ export default function App(): JSX.Element {
               void refreshConversations();
               return;
             }
-            if (event.type === "reasoning.delta") setReasoning(true);
-            if (event.type === "text.delta" || event.type === "turn.done") setReasoning(false);
             apply(event);
           },
           controller.signal,
@@ -433,7 +426,7 @@ export default function App(): JSX.Element {
             );
           })}
 
-          {thinking && <Thinking label={reasoning ? "Thinking" : "Working"} />}
+          {thinking && <Thinking />}
         </div>
 
         <Composer
