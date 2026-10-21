@@ -34,6 +34,11 @@ const redactHost = (url) => {
 };
 
 const lines = [];
+let problems = 0;
+const check2 = (label, ok, detail = "") => {
+  if (!ok) problems++;
+  say(`  ${label.padEnd(18)} ${ok ? "ok" : `FAIL  ${detail}`}`);
+};
 const say = (s) => { lines.push(s); console.log(s); };
 const ok = (b) => (b ? "ok" : "FAIL");
 
@@ -234,6 +239,43 @@ if (reachable && credential) {
       say(`  → the harness will use "${workingMode}" (FOUNDRY_AGENT_REF_MODE=auto)`);
     } else {
       say("  → neither shape worked; the cause is probably credentials or agent name, not shape");
+    }
+
+    /* Titling target. The failure that matters is silent: an agent that
+       declares tools can answer a title request with a function_call. */
+    const titleAgent = process.env.FOUNDRY_TITLE_AGENT?.trim();
+    const titleModel = (process.env.FOUNDRY_TITLE_MODEL || process.env.FOUNDRY_MODEL_NAME || "").trim();
+    say(`\nconversation titles`);
+    if (process.env.FOUNDRY_TITLES === "false") {
+      say("  disabled           FOUNDRY_TITLES=false");
+    } else if (titleAgent) {
+      say(`  using agent        ${titleAgent}`);
+      let ta = null;
+      try {
+        ta = await agents.getVersion?.(titleAgent);
+      } catch {
+        try { ta = await agents.get?.(titleAgent); } catch { /* reported below */ }
+      }
+      check2("agent resolves", !!ta);
+      if (ta) {
+        const tools = ta.tools ?? [];
+        check2(
+          "declares no tools",
+          tools.length === 0,
+          `declares ${tools.length} (${tools.map((t) => t.type).join(", ")}) — a tool call ` +
+            `returned for a title starts a tool loop`,
+        );
+      }
+    } else if (titleModel) {
+      say(`  using deployment   ${titleModel}`);
+      check2(
+        "deployment exists",
+        deploymentNames.length === 0 || deploymentNames.includes(titleModel),
+        `${titleModel} is not in this project's deployments`,
+      );
+    } else {
+      say("  not configured     set FOUNDRY_TITLE_AGENT or FOUNDRY_TITLE_MODEL");
+      say("                     (conversations keep their first-message titles)");
     }
 
     say(`\nresponses round trip`);
