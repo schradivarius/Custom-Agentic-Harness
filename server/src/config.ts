@@ -125,6 +125,13 @@ export const config = {
      * it — its instructions and tools apply to every call — so titling needs
      * a bare model. Falls back to FOUNDRY_MODEL_NAME.
      */
+    /**
+     * A dedicated titling agent, preferred over titleModel when set. Its own
+     * system prompt does the instructing, so none is sent. It must declare no
+     * tools: an agent applies its tools to every call it receives, and a
+     * function_call returned for a title would start a tool loop.
+     */
+    titleAgent: process.env["FOUNDRY_TITLE_AGENT"]?.trim() || "",
     titleModel:
       process.env["FOUNDRY_TITLE_MODEL"]?.trim() ||
       process.env["FOUNDRY_MODEL_NAME"]?.trim() ||

@@ -200,7 +200,13 @@ async function* streamScript(script: Script, responseId: string): AsyncGenerator
   };
 }
 
-export function createMockOpenAI(): any {
+export function createMockOpenAI(target?: { kind: string; name?: string }): any {
+  // A dedicated titling agent sends no instructions — its prompt lives
+  // server-side — so the mock recognises it by which agent it is bound to.
+  const isTitleAgent =
+    target?.kind === "agent" &&
+    !!config.foundry.titleAgent &&
+    target.name === config.foundry.titleAgent;
   return {
     conversations: {
       create: async () => ({ id: `conv_mock_${randomUUID().slice(0, 8)}` }),
@@ -218,7 +224,11 @@ export function createMockOpenAI(): any {
         // Titling asks a bare deployment with instructions and no tools.
         // Answer it the way a model would, quotes and all, so the cleanup
         // path is exercised rather than assumed.
-        if (typeof params?.instructions === "string" && /title this exchange/i.test(params.instructions)) {
+        if (
+          isTitleAgent ||
+          (typeof params?.instructions === "string" &&
+            /title this exchange/i.test(params.instructions))
+        ) {
           return {
             id: `resp_title_${randomUUID().slice(0, 8)}`,
             output: [],

@@ -113,12 +113,20 @@ first exchange finishes: one small request summarises it into a few words and
 the new title arrives on the still-open stream, so the sidebar updates without
 a refetch.
 
-That request goes to a bare model deployment, never to the hosted agent — an
-agent applies its instructions and tools to every call it gets, so asking it
-for a title can set a tool loop running. `FOUNDRY_TITLE_MODEL` names the
-deployment, falling back to `FOUNDRY_MODEL_NAME`; with neither set, titling is
-skipped and the first-message title stands. `FOUNDRY_TITLES=false` turns it
-off.
+Two ways to point it somewhere, in order of preference:
+
+| | |
+|---|---|
+| `FOUNDRY_TITLE_AGENT` | a dedicated agent; its own system prompt instructs it, so the wording is editable in the portal |
+| `FOUNDRY_TITLE_MODEL` | a bare deployment, instructed inline by the harness (falls back to `FOUNDRY_MODEL_NAME`) |
+
+With neither set, titling is skipped — logged once — and first-message titles
+stand. `FOUNDRY_TITLES=false` turns it off.
+
+**A titling agent must declare no tools.** An agent applies its tools to every
+call it receives, so one that can call tools may answer a title request with a
+`function_call` and set a tool loop running to name a chat. This is also why
+your *chat* agent is never used for titling.
 
 Failure is never fatal: a timeout, a refusal or an empty reply all leave the
 first-message title in place.

@@ -61,7 +61,9 @@ export function getOpenAI(target: Target = defaultTarget(), mode: RefMode = "cli
 
   let client: OpenAI;
   if (config.foundry.mock) {
-    client = createMockOpenAI() as OpenAI;
+    client = createMockOpenAI(
+      target.kind === "agent" ? { kind: "agent", name: target.name } : { kind: "model" },
+    ) as OpenAI;
   } else {
     const p = getProject() as any;
     client =
@@ -287,13 +289,15 @@ export async function generateTitle(
 ): Promise<string | null> {
   if (!config.foundry.titles) return null;
 
+  const agentName = config.foundry.titleAgent;
   const model = config.foundry.titleModel;
-  if (!model) {
+  if (!agentName && !model) {
     if (!titleWarned) {
       titleWarned = true;
       console.warn(
-        "[foundry] FOUNDRY_TITLE_MODEL (or FOUNDRY_MODEL_NAME) is unset, so " +
-          "conversations keep their first-message titles.",
+        "[foundry] neither FOUNDRY_TITLE_AGENT nor FOUNDRY_TITLE_MODEL / " +
+          "FOUNDRY_MODEL_NAME is set, so conversations keep their " +
+          "first-message titles.",
       );
     }
     return null;
@@ -301,14 +305,27 @@ export async function generateTitle(
 
   const exchange = `User: ${userText.slice(0, 1200)}\n\nAssistant: ${assistantText.slice(0, 1200)}`;
 
+  /* A dedicated agent carries its own system prompt, so none is sent — its
+     wording lives in the portal. A bare deployment carries nothing, so the
+     instruction goes inline. Neither path sends tools. */
+  const target: Target = agentName
+    ? { kind: "agent", name: agentName }
+    : { kind: "model", deployment: model };
+
   try {
-    const client = getOpenAI({ kind: "model", deployment: model }) as any;
+    const mode = await ensureAgentRefMode(target);
+    const client = getOpenAI(target, mode) as any;
+    const addressing = agentName
+      ? paramsForTarget(target, mode)
+      : {
+          model,
+          instructions:
+            "Title this exchange in at most six words. Reply with the title alone: " +
+            "no quotation marks, no trailing period, no preamble.",
+        };
     const res = await client.responses.create(
       {
-        model,
-        instructions:
-          "Title this exchange in at most six words. Reply with the title alone: " +
-          "no quotation marks, no trailing period, no preamble.",
+        ...addressing,
         input: [{ type: "message", role: "user", content: exchange }],
         // Generous for six words on purpose: on a reasoning deployment this
         // budget covers reasoning tokens too, and a tight cap gets spent
