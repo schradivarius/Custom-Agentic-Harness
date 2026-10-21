@@ -229,6 +229,9 @@ export function createMockOpenAI(target?: { kind: string; name?: string }): any 
           (typeof params?.instructions === "string" &&
             /title this exchange/i.test(params.instructions))
         ) {
+          if (config.foundry.mockTitleDelayMs > 0) {
+            await new Promise((r) => setTimeout(r, config.foundry.mockTitleDelayMs));
+          }
           return {
             id: `resp_title_${randomUUID().slice(0, 8)}`,
             output: [],

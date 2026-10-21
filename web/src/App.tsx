@@ -218,6 +218,12 @@ export default function App(): JSX.Element {
               void refreshConversations();
               return;
             }
+            if (event.type === "turn.done") {
+              // The agent has finished. The stream stays open a moment longer
+              // for the title, which is background work — leaving busy set
+              // through it puts the thinking dots back under a finished answer.
+              setBusy(false);
+            }
             if (event.type === "conversation.titled") {
               // Patch in place: a refetch would reorder the list mid-read.
               setConversations((prev) =>

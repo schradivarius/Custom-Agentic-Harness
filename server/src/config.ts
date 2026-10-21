@@ -63,6 +63,9 @@ const mock = bool("FOUNDRY_MOCK", false);
  * Unset (the normal case) means the mock accepts anything.
  */
 const mockRefMode = process.env["FOUNDRY_MOCK_REF_MODE"]?.trim().toLowerCase() || "";
+/** Test fixture: hold the mock's title reply, to widen the window after
+ *  turn.done in which the UI must already look idle. */
+const mockTitleDelayMs = Number(process.env["FOUNDRY_MOCK_TITLE_DELAY_MS"] ?? 0);
 if (mockRefMode && mockRefMode !== "client" && mockRefMode !== "body") {
   throw new Error(`FOUNDRY_MOCK_REF_MODE must be "client" or "body", got "${mockRefMode}".`);
 }
@@ -104,6 +107,7 @@ export const config = {
   foundry: {
     mock,
     mockRefMode: mockRefMode as "" | "client" | "body",
+    mockTitleDelayMs: Number.isFinite(mockTitleDelayMs) ? mockTitleDelayMs : 0,
     endpoint: reqUnlessMock("FOUNDRY_PROJECT_ENDPOINT", "mock://foundry-desk"),
     agentName: reqUnlessMock("FOUNDRY_AGENT_NAME", "mock-agent"),
     /** Optional: only needed to create agent versions or to call a bare model. */
