@@ -24,18 +24,19 @@
   --warn: #8e1620;            /* Aurora shade */
   --danger: #c90000;
   --code-bg: #f4f5f5;
-  --plaque: #ffffff;          /* the logo sits on white, in both modes */
+  --plaque: #ffffff;
+  --bubble: #f1f2f2;          /* the logo sits on white, in both modes */
   --radius: 10px;
   --radius-sm: 7px;
   --shadow: 0 1px 2px rgb(31 34 35 / 0.06), 0 4px 12px rgb(31 34 35 / 0.05);
-  /* Monospace throughout — the whole interface, not just code. Aurora's
-     Neue Kabel survives in the logo artwork only. A system stack keeps this
-     dependency-free and instant; swap in a webfont here if you want one
-     specific face everywhere. */
+  /* Proportional for the interface, monospace kept for code and tool output.
+     Neue Kabel is Aurora's face and leads the stack; the system UI font
+     follows, so this reads correctly on machines without the licensed font. */
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", "DejaVu Sans Mono", monospace;
-  --sans: var(--mono);
-  --display: var(--mono);
+  --sans: "Neue Kabel", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+    system-ui, Arial, sans-serif;
+  --display: var(--sans);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -55,6 +56,7 @@
     --warn: #e0a458;
     --danger: #f08b8b;
     --code-bg: #1a1d1e;
+    --bubble: #32373a;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 14px rgb(0 0 0 / 0.3);
   }
 }
@@ -66,171 +68,153 @@ html, body, #root { height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13.5px/1.62 var(--sans);
+  font: 15px/1.65 var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 
 /* ── layout ───────────────────────────────────────────────────────── */
 
-.app { display: grid; grid-template-columns: 252px 1fr; height: 100%; }
+.app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
 
 .main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
 
 .topbar {
   display: flex; align-items: center; gap: 12px;
-  padding: 0 24px; height: 52px; flex: none;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  backdrop-filter: blur(8px);
+  padding: 0 18px; height: 56px; flex: none;
+  background: var(--bg);
 }
-.topbar__title { font-weight: 560; font-size: 14px; }
-.topbar__id {
-  font-family: var(--mono); font-size: 11px;
-  color: var(--text-faint); background: var(--bg-sunken);
-  padding: 3px 7px; border-radius: 5px;
+.topbar__title {
+  font-size: 13.5px; color: var(--text-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .thread { flex: 1; overflow-y: auto; padding: 28px 24px 8px; scroll-behavior: smooth; }
-.thread > * { max-width: 48rem; margin-inline: auto; }
+.thread > * { max-width: 46rem; margin-inline: auto; }
 
-/* ── target picker ────────────────────────────────────────────────── */
+/* ── model picker ─────────────────────────────────────────────────
+   Top-left of the header, where the thing answering you is named
+   before you start typing rather than beside the send button. */
 
-/* Sits in the composer's controls row, so it stays quiet until hovered —
-   the message is the subject of that box, not the model name. */
-.picker { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.picker { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .picker__select {
-  font: inherit; font-size: 12.5px; color: var(--text-dim);
+  font: inherit; font-size: 14px; font-weight: 500; color: var(--text);
   background: transparent; border: 1px solid transparent;
-  border-radius: var(--radius-sm); padding: 4px 24px 4px 8px; cursor: pointer;
-  max-width: 21rem; text-overflow: ellipsis;
+  border-radius: 9px; padding: 5px 26px 5px 9px; cursor: pointer;
+  max-width: 20rem; text-overflow: ellipsis;
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
                     linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 12px) 52%, calc(100% - 8px) 52%;
+  background-position: calc(100% - 13px) 54%, calc(100% - 9px) 54%;
   background-size: 4px 4px, 4px 4px;
   background-repeat: no-repeat;
 }
-.picker__select:hover:not(:disabled) {
-  color: var(--text); background-color: var(--bg-sunken); border-color: var(--border);
-}
+.picker__select:hover:not(:disabled) { background-color: var(--bg-sunken); }
 .picker__select:disabled { opacity: 0.5; cursor: not-allowed; }
 .picker__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .picker__hint {
-  flex: none; font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase;
-  color: var(--text-faint); border: 1px solid var(--border);
-  padding: 1px 6px; border-radius: 20px; cursor: help; white-space: nowrap;
+  flex: none; font-size: 10.5px; color: var(--text-faint);
+  border: 1px solid var(--border); padding: 1px 7px; border-radius: 20px;
+  cursor: help; white-space: nowrap;
 }
 
-/* Visible to screen readers only. */
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* ── nav rail ─────────────────────────────────────────────────────
-   A sectioned rail rather than a bare conversation list: chats, the
-   models this project exposes, and the local tools with their approval
-   posture, each collapsible. */
+/* ── sidebar ──────────────────────────────────────────────────────
+   A conversation list and little else: the model picker lives in the
+   header, and tools sit quietly in the footer rather than competing
+   with the thing people actually scan for. */
 
-.rail {
+.side {
   display: flex; flex-direction: column; min-height: 0;
   background: var(--sidebar);
-  border-right: 1px solid var(--border);
 }
-.rail__head {
-  display: flex; align-items: center; gap: 9px;
-  padding: 15px 13px 11px; flex: none;
+.side__top {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 12px 10px; flex: none;
 }
-.rail__nav { flex: 1; overflow-y: auto; padding: 2px 7px 10px; }
-.rail__foot { padding: 10px 13px; border-top: 1px solid var(--border); flex: none; }
+.brandmark { display: block; width: 26px; height: auto; flex: none; }
 
-.rail__item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  background: none; border: 0; cursor: pointer; text-align: left;
-  color: var(--text-dim); font: inherit; font-size: 12.5px;
-  padding: 6px 7px; border-radius: var(--radius-sm);
+.newchat {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  background: none; border: 1px solid var(--border); border-radius: 9px;
+  padding: 7px 11px; cursor: pointer; color: var(--text);
+  font: inherit; font-size: 13.5px; font-weight: 500;
 }
-.rail__item:hover { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); }
-.rail__item--action { color: var(--accent); }
-.rail__ico { flex: none; display: inline-flex; opacity: 0.85; }
-.rail__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rail__badge {
-  flex: none; font-size: 10.5px; color: var(--text-faint);
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-  padding: 0 5px; border-radius: 20px;
-}
-.rail__chev { flex: none; opacity: 0.6; transition: transform 0.12s ease; }
-.rail__chev--open { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .rail__chev { transition: none; } }
+.newchat:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
 
-.rail__body { padding: 2px 0 6px 10px; margin-left: 10px; border-left: 1px solid var(--border); }
-.rail__empty { color: var(--text-faint); font-size: 11.5px; padding: 4px 6px; margin: 0; }
+.side__list { flex: 1; overflow-y: auto; padding: 4px 8px 10px; }
+.side__empty { color: var(--text-faint); font-size: 13px; padding: 6px 8px; margin: 0; }
+.side__group { margin-bottom: 14px; }
+.side__grouphead {
+  font-size: 11.5px; font-weight: 600; color: var(--text-faint);
+  margin: 0 0 3px; padding: 0 8px; letter-spacing: 0.01em;
+}
 
-/* rows inside Models / Tools */
-.rowitem {
-  display: flex; align-items: center; gap: 7px;
-  padding: 4px 7px; border-radius: 5px; font-size: 11.5px;
-}
-.rowitem:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-.rowitem__name {
-  flex: 1; min-width: 0; color: var(--text-dim);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.rowitem__tag {
-  flex: none; font-size: 9.5px; letter-spacing: 0.03em;
-  color: var(--text-faint); border: 1px solid var(--border);
-  padding: 0 5px; border-radius: 20px;
-}
-.rowitem__tag--agent, .rowitem__tag--safe { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
-.rowitem__tag--caution { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
-.rowitem__tag--dangerous { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
-
-/* conversations, nested under Chats */
-.conv { display: flex; align-items: center; border-radius: 5px; }
-.conv:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.conv { display: flex; align-items: center; border-radius: 8px; }
+.conv:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .conv--active { background: color-mix(in srgb, var(--text) 10%, transparent); }
 .conv__main {
-  flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 7px;
-  background: none; border: 0; cursor: pointer; text-align: left;
-  padding: 5px 4px 5px 7px; color: inherit; font: inherit; font-size: 11.5px;
-}
-.conv__title {
-  flex: 1; min-width: 0; color: var(--text-dim);
+  flex: 1; min-width: 0; background: none; border: 0; cursor: pointer;
+  text-align: left; padding: 7px 4px 7px 9px; color: var(--text-dim);
+  font: inherit; font-size: 13.5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.conv--active .conv__title { color: var(--text); }
-.conv__meta { flex: none; font-size: 10px; color: var(--text-faint); }
+.conv--active .conv__main { color: var(--text); }
 .conv__del {
-  background: none; border: 0; cursor: pointer; font-size: 15px; line-height: 1;
-  color: var(--text-faint); padding: 3px 7px; border-radius: 5px; opacity: 0;
+  background: none; border: 0; cursor: pointer; font-size: 17px; line-height: 1;
+  color: var(--text-faint); padding: 3px 9px; border-radius: 6px; opacity: 0;
 }
 .conv:hover .conv__del { opacity: 1; }
 .conv__del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
-/* Two marks, swapped by theme in the markup: the "A" is white on dark and
-   Aurora's logo gray on light, so it never needs a backing plate. */
-/* Standing alone it carries the whole corner, so it sits a little larger
-   than it did beside a wordmark. */
-.brandmark { display: block; width: 34px; height: auto; flex: none; }
+.side__foot { padding: 8px 12px 12px; border-top: 1px solid var(--border); flex: none; }
+.side__tools {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: 0; cursor: pointer; color: var(--text-dim);
+  font: inherit; font-size: 13px; padding: 6px 7px; border-radius: 8px;
+}
+.side__tools:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
+.side__count { margin-left: auto; font-size: 11.5px; color: var(--text-faint); }
+.side__toolbody { padding: 2px 0 6px; }
 
-.status { display: flex; align-items: center; gap: 7px; }
+.rowitem {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 7px; border-radius: 6px; font-size: 12.5px;
+}
+.rowitem__name {
+  flex: 1; min-width: 0; color: var(--text-dim); font-family: var(--mono);
+  font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rowitem__tag {
+  flex: none; font-size: 10px; color: var(--text-faint);
+  border: 1px solid var(--border); padding: 0 6px; border-radius: 20px;
+}
+.rowitem__tag--safe { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
+.rowitem__tag--caution, .rowitem__tag--dangerous {
+  color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--border));
+}
+
+.status { display: flex; align-items: center; gap: 7px; padding: 6px 7px 0; }
 .status__dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .status__dot--ok { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
 .status__dot--bad { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
 .status__text {
-  font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 12px; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.status__line { margin: 6px 0 0; font-size: 10.5px; color: var(--text-faint); }
-.status__err { font-size: 10.5px; color: var(--danger); margin: 6px 0 0; word-break: break-word; }
+.status__err { font-size: 11.5px; color: var(--danger); margin: 6px 0 0; word-break: break-word; }
 
 /* ── turns ────────────────────────────────────────────────────────── */
 
-.turn { margin-bottom: 20px; }
+.turn { margin-bottom: 26px; }
 .turn--user { display: flex; justify-content: flex-end; }
 .bubble {
-  background: var(--bg-raised); border: 1px solid var(--border);
-  padding: 10px 14px; border-radius: 14px 14px 4px 14px;
-  max-width: 85%; white-space: pre-wrap; box-shadow: var(--shadow);
+  background: var(--bubble); border: 0;
+  padding: 11px 16px; border-radius: 20px;
+  max-width: 76%; white-space: pre-wrap;
 }
 .turn--assistant { position: relative; }
 .usage {
@@ -406,7 +390,7 @@ body {
    icons; a text pill next to an icon would make the composer jump. */
 .btn--icon {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; padding: 0; border-radius: 8px;
+  width: 32px; height: 32px; padding: 0; border-radius: 50%;
 }
 .btn--icon svg { display: block; }
 
@@ -414,24 +398,26 @@ body {
 
 .composer { flex: none; padding: 10px 24px 16px; }
 .composer__box {
-  display: flex; flex-direction: column; gap: 6px;
-  max-width: 48rem; margin-inline: auto;
-  background: var(--bg-raised); border: 1px solid var(--border-strong);
-  border-radius: 14px; padding: 10px 10px 8px 14px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 4px;
+  max-width: 46rem; margin-inline: auto;
+  background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: 26px; padding: 12px 12px 10px 18px; box-shadow: var(--shadow);
 }
-.composer__box:focus-within { border-color: var(--accent); }
+.composer__box:focus-within { border-color: var(--border-strong); }
 .composer__box textarea {
   resize: none; border: 0; outline: none; background: none;
   color: inherit; font: inherit; line-height: 1.55; padding: 4px 0 2px;
   max-height: 220px; min-width: 0; width: 100%;
 }
 /* Model picker on the left, send on the right — under the input, as in Claude. */
+/* One child now that the picker moved to the header, so this pins it right
+   rather than spacing a row that no longer has two ends. */
 .composer__controls {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: flex-end;
   gap: 9px; min-width: 0;
 }
 .composer__hint {
-  max-width: 48rem; margin: 8px auto 0; text-align: center;
+  max-width: 46rem; margin: 9px auto 0; text-align: center;
   font-size: 11.5px; color: var(--text-faint);
 }
 

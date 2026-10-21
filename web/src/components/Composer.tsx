@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** The return/enter arrow, drawn rather than typed — a ↵ glyph renders
     inconsistently across the brand font stack. */
@@ -35,14 +35,11 @@ export function Composer({
   onStop,
   busy,
   disabled,
-  picker,
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
   disabled: boolean;
-  /** Target picker, rendered in the controls row under the input. */
-  picker?: ReactNode;
 }): JSX.Element {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -80,7 +77,6 @@ export function Composer({
           }}
         />
         <div className="composer__controls">
-          {picker}
           {busy ? (
             <button
               type="button"

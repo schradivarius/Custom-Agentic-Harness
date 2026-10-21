@@ -318,7 +318,6 @@ export default function App(): JSX.Element {
         conversations={conversations}
         activeId={activeId}
         health={health}
-        targets={targets}
         tools={tools}
         onSelect={(id) =>
           void openConversation(id, conversations.find((c) => c.id === id)?.targetId)
@@ -329,10 +328,12 @@ export default function App(): JSX.Element {
 
       <main className="main">
         <header className="topbar">
-          <span className="topbar__title">
-            {conversations.find((c) => c.id === activeId)?.title ?? "New conversation"}
-          </span>
-          {activeId && <code className="topbar__id">{activeId}</code>}
+          <TargetPicker
+            targets={targets}
+            value={targetId}
+            onChange={setTargetId}
+            disabled={busy}
+          />
         </header>
 
         <div className="thread" ref={scrollRef} onScroll={onScroll}>
@@ -418,14 +419,6 @@ export default function App(): JSX.Element {
           onStop={stop}
           busy={busy}
           disabled={health !== null && !health.ok}
-          picker={
-            <TargetPicker
-              targets={targets}
-              value={targetId}
-              onChange={setTargetId}
-              disabled={busy}
-            />
-          }
         />
       </main>
     </div>
