@@ -25,7 +25,9 @@
   --danger: #c90000;
   --code-bg: #f4f5f5;
   --plaque: #ffffff;
-  --bubble: #f1f2f2;          /* the logo sits on white, in both modes */
+  --bubble: #f1f2f2;
+  --scroll: #cfd2d2;
+  --scroll-hover: #a9adad;          /* the logo sits on white, in both modes */
   --radius: 10px;
   --radius-sm: 7px;
   --shadow: 0 1px 2px rgb(31 34 35 / 0.06), 0 4px 12px rgb(31 34 35 / 0.05);
@@ -57,9 +59,41 @@
     --danger: #f08b8b;
     --code-bg: #1a1d1e;
     --bubble: #32373a;
+    --scroll: #43494b;
+    --scroll-hover: #5b6265;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 14px rgb(0 0 0 / 0.3);
   }
 }
+
+/* ── scrollbars ───────────────────────────────────────────────────
+   Thin, trackless and themed, instead of the browser default. The
+   standard properties cover Firefox; the WebKit pseudo-elements give
+   Chromium a rounded thumb, and the transparent border with
+   background-clip insets it so it reads as a floating bar rather than a
+   gutter. Kept visible rather than hover-only — a scrollbar nobody can
+   see is a scrollbar nobody knows to drag. */
+/* Firefox only. Chromium ignores ::-webkit-scrollbar once scrollbar-width is
+   set, so the standard properties are fenced off behind a feature query to
+   stop them disabling the richer styling below. */
+@supports not selector(::-webkit-scrollbar) {
+  :root {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll) transparent;
+  }
+}
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scroll);
+  border-radius: 20px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-hover);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
 
 * { box-sizing: border-box; }
 
