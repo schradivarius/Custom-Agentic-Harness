@@ -123,6 +123,12 @@ Two ways to point it somewhere, in order of preference:
 With neither set, titling is skipped — logged once — and first-message titles
 stand. `FOUNDRY_TITLES=false` turns it off.
 
+A titling agent is hidden from the model picker automatically — chatting with
+one produces nonsense, so offering it is a trap. `FOUNDRY_HIDDEN_AGENTS` hides
+any others. That is presentation only: it does not stop anyone addressing
+those agents through Foundry directly, which is an RBAC question and wants a
+separate project with its own role assignments.
+
 **A titling agent must declare no tools.** An agent applies its tools to every
 call it receives, so one that can call tools may answer a title request with a
 `function_call` and set a tool loop running to name a chat. This is also why

@@ -334,6 +334,14 @@ export function mockTargets(): TargetOption[] {
       toolSource: "agent",
     },
     {
+      id: "agent:title-gen-agent",
+      kind: "agent",
+      label: "title-gen-agent",
+      detail: "gpt-4.1",
+      isDefault: false,
+      toolSource: "agent",
+    },
+    {
       id: "model:gpt-4.1",
       kind: "model",
       label: "gpt-4.1",

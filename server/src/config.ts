@@ -136,6 +136,17 @@ export const config = {
      * function_call returned for a title would start a tool loop.
      */
     titleAgent: process.env["FOUNDRY_TITLE_AGENT"]?.trim() || "",
+    /**
+     * Agents to keep out of the picker. Utility agents — titling and the like
+     * — are not useful to chat with, and offering one only invites someone to
+     * pick it and get nonsense back. The titling agent is hidden
+     * automatically; this is for any others.
+     *
+     * Presentation only. It does not stop anyone addressing the agent through
+     * Foundry directly; that is an RBAC question, and a separate project with
+     * its own role assignments is the answer to it.
+     */
+    hiddenAgents: list("FOUNDRY_HIDDEN_AGENTS", []),
     titleModel:
       process.env["FOUNDRY_TITLE_MODEL"]?.trim() ||
       process.env["FOUNDRY_MODEL_NAME"]?.trim() ||

@@ -170,10 +170,17 @@ export function toolSourceFor(target: Target): "agent" | "harness" {
  * permission degrades the picker rather than breaking the app.
  */
 export async function listTargets(): Promise<TargetOption[]> {
-  if (config.foundry.mock) return mockTargets();
-
   const options: TargetOption[] = [];
   const seen = new Set<string>();
+
+  /* Utility agents are hidden from the picker: chatting with a titling agent
+     produces nonsense, so offering it is a trap. The configured chat agent is
+     never hidden, even if it were listed here by mistake. */
+  const hidden = new Set(
+    [config.foundry.titleAgent, ...config.foundry.hiddenAgents]
+      .map((n) => n.trim())
+      .filter((n) => n && n !== config.foundry.agentName),
+  );
   const push = (o: TargetOption): void => {
     if (seen.has(o.id)) return;
     seen.add(o.id);
@@ -189,6 +196,10 @@ export async function listTargets(): Promise<TargetOption[]> {
     toolSource: "agent",
   });
 
+  if (config.foundry.mock) {
+    return mockTargets().filter((o) => !(o.kind === "agent" && hidden.has(o.label)));
+  }
+
   const p = getProject() as any;
 
   try {
@@ -196,7 +207,7 @@ export async function listTargets(): Promise<TargetOption[]> {
     if (iter) {
       for await (const a of iter) {
         const name = String(a?.name ?? "");
-        if (!name) continue;
+        if (!name || hidden.has(name)) continue;
         push({
           id: `agent:${name}`,
           kind: "agent",
