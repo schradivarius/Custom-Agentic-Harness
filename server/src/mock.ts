@@ -89,6 +89,26 @@ function sentenceFor(userText: string): Script[] {
     ];
   }
 
+  // Asking for code exercises the fenced-block rendering, including the
+  // stretch mid-stream where the closing fence has not arrived yet.
+  if (/\b(code|function|script|example|snippet)\b/.test(t)) {
+    return [
+      {
+        text:
+          "Here is a culvert sizing helper:\n\n" +
+          "```python\n" +
+          "def capacity(diameter_m, slope, n=0.013):\n" +
+          '    """Manning\'s equation for a full circular pipe."""\n' +
+          "    area = 3.14159 * (diameter_m / 2) ** 2\n" +
+          "    hydraulic_radius = diameter_m / 4\n" +
+          "    return (1 / n) * area * hydraulic_radius ** (2 / 3) * slope ** 0.5\n" +
+          "```\n\n" +
+          "Call it with `capacity(0.6, 0.01)` for a 600 mm pipe.",
+        output: [],
+      },
+    ];
+  }
+
   // Mentioning MCP exercises the service-side approval path.
   if (/\bmcp\b/.test(t)) {
     return [

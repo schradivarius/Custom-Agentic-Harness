@@ -144,7 +144,9 @@ export const config = {
       process.env["MODEL_INSTRUCTIONS"]?.trim() ||
       "You are a desktop assistant with access to the user's local workspace through " +
         "function tools. Prefer reading before writing, keep paths relative to the " +
-        "workspace root, and explain what you are about to do when a change is destructive.",
+        "workspace root, and explain what you are about to do when a change is destructive. " +
+        "Put code in fenced Markdown blocks with a language tag, so it renders as code " +
+        "rather than prose.",
   },
 
   /** Filesystem tools are hard-confined to this directory. */
