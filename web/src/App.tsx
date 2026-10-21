@@ -218,6 +218,15 @@ export default function App(): JSX.Element {
               void refreshConversations();
               return;
             }
+            if (event.type === "conversation.titled") {
+              // Patch in place: a refetch would reorder the list mid-read.
+              setConversations((prev) =>
+                prev.map((c) =>
+                  c.id === event.conversationId ? { ...c, title: event.title } : c,
+                ),
+              );
+              return;
+            }
             apply(event);
           },
           controller.signal,

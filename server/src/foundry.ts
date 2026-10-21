@@ -265,6 +265,76 @@ export async function syncLocalToolsToAgent(): Promise<{ version: string } | nul
   return { version: String(created?.version ?? "unknown") };
 }
 
+/* ─────────────────────────── titling ────────────────────────── */
+
+/** Logged once, not per conversation, when titling cannot run. */
+let titleWarned = false;
+
+/**
+ * Summarise an opening exchange into a short conversation title.
+ *
+ * Deliberately not addressed at the hosted agent: its instructions and tools
+ * apply to every call it receives, so asking it for a title can set a tool
+ * loop running. This goes to a bare deployment with no tools and a tight
+ * output cap.
+ *
+ * Returns null on any failure. A conversation keeps its first-message title
+ * in that case, which is serviceable — never worth failing a turn over.
+ */
+export async function generateTitle(
+  userText: string,
+  assistantText: string,
+): Promise<string | null> {
+  if (!config.foundry.titles) return null;
+
+  const model = config.foundry.titleModel;
+  if (!model) {
+    if (!titleWarned) {
+      titleWarned = true;
+      console.warn(
+        "[foundry] FOUNDRY_TITLE_MODEL (or FOUNDRY_MODEL_NAME) is unset, so " +
+          "conversations keep their first-message titles.",
+      );
+    }
+    return null;
+  }
+
+  const exchange = `User: ${userText.slice(0, 1200)}\n\nAssistant: ${assistantText.slice(0, 1200)}`;
+
+  try {
+    const client = getOpenAI({ kind: "model", deployment: model }) as any;
+    const res = await client.responses.create(
+      {
+        model,
+        instructions:
+          "Title this exchange in at most six words. Reply with the title alone: " +
+          "no quotation marks, no trailing period, no preamble.",
+        input: [{ type: "message", role: "user", content: exchange }],
+        // Generous for six words on purpose: on a reasoning deployment this
+        // budget covers reasoning tokens too, and a tight cap gets spent
+        // thinking, returning empty output_text and no title at all.
+        max_output_tokens: 10000,
+      },
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    return cleanTitle(String(res?.output_text ?? ""));
+  } catch (err: any) {
+    console.warn("[foundry] could not generate a title:", String(err?.message ?? err).slice(0, 140));
+    return null;
+  }
+}
+
+/** Models like to add quotes, trailing stops and "Title:" whatever you ask. */
+export function cleanTitle(raw: string): string | null {
+  let t = raw.trim().split("\n")[0]?.trim() ?? "";
+  t = t.replace(/^(title|chat title)\s*[:\-—]\s*/i, "");
+  t = t.replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, "");
+  t = t.replace(/[.\s]+$/, "");
+  t = t.trim();
+  if (!t || t.length < 2) return null;
+  return t.length > 60 ? `${t.slice(0, 57).trimEnd()}…` : t;
+}
+
 /* ───────────────────────── conversations ────────────────────── */
 
 export async function createConversation(target?: Target): Promise<string> {

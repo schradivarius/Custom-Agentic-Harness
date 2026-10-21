@@ -56,6 +56,7 @@ export type ApprovalDecision = "once" | "session" | "deny";
 /** Server → UI. Discriminated on `type`. */
 export type HarnessEvent =
   | { type: "conversation"; conversationId: string }
+  | { type: "conversation.titled"; conversationId: string; title: string }
   | { type: "response.started"; responseId: string }
   | { type: "text.delta"; delta: string }
   | { type: "text.done"; text: string }
@@ -85,6 +86,8 @@ export interface ConversationMeta {
   messageCount: number;
   /** Which agent or model deployment this conversation is addressed to. */
   targetId?: string;
+  /** True while the title is still machine-assigned and may be replaced. */
+  titleAuto?: boolean;
 }
 
 /** A transcript turn, mirrored locally so the sidebar can rehydrate instantly. */

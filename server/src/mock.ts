@@ -214,6 +214,17 @@ export function createMockOpenAI(): any {
       create: async (params: any) => {
         enforceRefMode(params);
         enforceToolOutputs(params);
+
+        // Titling asks a bare deployment with instructions and no tools.
+        // Answer it the way a model would, quotes and all, so the cleanup
+        // path is exercised rather than assumed.
+        if (typeof params?.instructions === "string" && /title this exchange/i.test(params.instructions)) {
+          return {
+            id: `resp_title_${randomUUID().slice(0, 8)}`,
+            output: [],
+            output_text: '"Walking The Mock Workspace."',
+          };
+        }
         return {
           id: `resp_probe_${randomUUID().slice(0, 8)}`,
           output: [],

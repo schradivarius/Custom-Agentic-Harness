@@ -115,6 +115,20 @@ export const config = {
      * rather than a hosted agent. An agent carries its own instructions, so
      * this is ignored in that case.
      */
+    /**
+     * Summarise the opening exchange into a short conversation title.
+     * One small extra request per conversation, so it can be turned off.
+     */
+    titles: bool("FOUNDRY_TITLES", true),
+    /**
+     * Deployment used for that summary. A hosted agent is the wrong tool for
+     * it — its instructions and tools apply to every call — so titling needs
+     * a bare model. Falls back to FOUNDRY_MODEL_NAME.
+     */
+    titleModel:
+      process.env["FOUNDRY_TITLE_MODEL"]?.trim() ||
+      process.env["FOUNDRY_MODEL_NAME"]?.trim() ||
+      "",
     modelInstructions:
       process.env["MODEL_INSTRUCTIONS"]?.trim() ||
       "You are a desktop assistant with access to the user's local workspace through " +

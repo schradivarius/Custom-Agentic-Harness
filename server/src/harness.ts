@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { approvalGate } from "./approvals.js";
-import { ensureAgentRefMode, getOpenAI, paramsForTarget } from "./foundry.js";
+import { ensureAgentRefMode, generateTitle, getOpenAI, paramsForTarget } from "./foundry.js";
 import { defaultTarget, targetId, type Target } from "./targets.js";
 import { registry } from "./tools.js";
 import { store } from "./store.js";
@@ -308,6 +308,18 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
       });
       const usage = usageOf(final);
       emit({ type: "turn.done", responseId, targetId: tid, ...(usage ? { usage } : {}) });
+
+      /* Name the conversation from the opening exchange, once. The stream is
+         still open, so the sidebar updates without a refetch. Any failure
+         leaves the first-message title in place. */
+      const turns = store.getTurns(conversationId);
+      const meta = store.getConversation(conversationId);
+      if (turns.length <= 2 && meta?.titleAuto !== false && assistantText.trim()) {
+        const title = await generateTitle(userText, assistantText);
+        if (title && store.setTitle(conversationId, title)) {
+          emit({ type: "conversation.titled", conversationId, title });
+        }
+      }
       return;
     }
 

@@ -106,9 +106,21 @@ export const store = {
       // Name the conversation after its opening question, like Claude Desktop.
       if (c.title === "New conversation" && turn.role === "user" && turn.text.trim()) {
         c.title = turn.text.trim().split("\n")[0]!.slice(0, 60);
+        // Provisional: a summary may replace it once the exchange is done.
+        c.titleAuto = true;
       }
     }
     save();
+  },
+
+  /** Replace a machine-assigned title. A title the user set is left alone. */
+  setTitle(id: string, title: string): boolean {
+    const c = this.getConversation(id);
+    if (!c || c.titleAuto === false) return false;
+    c.title = title;
+    c.titleAuto = true;
+    save();
+    return true;
   },
 
   getTurns(conversationId: string): StoredTurn[] {

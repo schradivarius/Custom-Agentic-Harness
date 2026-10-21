@@ -106,6 +106,23 @@ Each conversation remembers what it was last addressed to, so reopening an old
 thread does not silently switch model, and every answer is labelled with the
 target that produced it.
 
+## Conversation titles
+
+A new conversation is named after its first message, then renamed once the
+first exchange finishes: one small request summarises it into a few words and
+the new title arrives on the still-open stream, so the sidebar updates without
+a refetch.
+
+That request goes to a bare model deployment, never to the hosted agent — an
+agent applies its instructions and tools to every call it gets, so asking it
+for a title can set a tool loop running. `FOUNDRY_TITLE_MODEL` names the
+deployment, falling back to `FOUNDRY_MODEL_NAME`; with neither set, titling is
+skipped and the first-message title stands. `FOUNDRY_TITLES=false` turns it
+off.
+
+Failure is never fatal: a timeout, a refusal or an empty reply all leave the
+first-message title in place.
+
 ## The thing that actually matters: who runs the tools
 
 Foundry can run tools itself. A desktop harness exists to run the ones it

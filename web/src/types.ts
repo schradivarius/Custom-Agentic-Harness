@@ -41,6 +41,7 @@ export interface TokenUsage {
 
 export type HarnessEvent =
   | { type: "conversation"; conversationId: string }
+  | { type: "conversation.titled"; conversationId: string; title: string }
   | { type: "response.started"; responseId: string }
   | { type: "text.delta"; delta: string }
   | { type: "text.done"; text: string }
@@ -60,6 +61,7 @@ export interface ConversationMeta {
   lastResponseId?: string;
   messageCount: number;
   targetId?: string;
+  titleAuto?: boolean;
 }
 
 export interface StoredTurn {
