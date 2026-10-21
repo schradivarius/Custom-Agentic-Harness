@@ -5,6 +5,7 @@ import { Composer } from "./components/Composer.tsx";
 import { ToolCard } from "./components/ToolCard.tsx";
 import { ApprovalCard } from "./components/ApprovalCard.tsx";
 import { Markdown } from "./components/Markdown.tsx";
+import { Thinking } from "./components/Thinking.tsx";
 import { TargetPicker } from "./components/TargetPicker.tsx";
 import type {
   ApprovalDecision,
@@ -34,6 +35,7 @@ export default function App(): JSX.Element {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
+  const [reasoning, setReasoning] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -100,6 +102,9 @@ export default function App(): JSX.Element {
       const last = out[out.length - 1];
 
       switch (event.type) {
+        case "reasoning.delta":
+          return out; // handled outside the reducer, see setReasoning below
+
         case "text.delta": {
           if (last?.kind === "assistant" && last.streaming) {
             out[out.length - 1] = { ...last, text: last.text + event.delta };
@@ -200,6 +205,7 @@ export default function App(): JSX.Element {
     async (text: string) => {
       setBlocks((prev) => [...prev, { kind: "user", id: nextId(), text }]);
       setBusy(true);
+      setReasoning(false);
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -217,6 +223,8 @@ export default function App(): JSX.Element {
               void refreshConversations();
               return;
             }
+            if (event.type === "reasoning.delta") setReasoning(true);
+            if (event.type === "text.delta" || event.type === "turn.done") setReasoning(false);
             apply(event);
           },
           controller.signal,
@@ -311,6 +319,18 @@ export default function App(): JSX.Element {
   );
 
   /* ── render ────────────────────────────────────────────────────── */
+
+  /*
+   * Show the indicator only when nothing else already says "wait".
+   * Streaming text has its own caret; a tool still running has its own
+   * spinner on the card; and an approval prompt is waiting on the human,
+   * not on the agent — claiming to think there would be a lie.
+   */
+  const last = blocks[blocks.length - 1];
+  const awaitingApproval = blocks.some((b) => b.kind === "tool" && b.approval);
+  const streamingText = last?.kind === "assistant" && last.streaming;
+  const toolRunning = last?.kind === "tool" && !last.result;
+  const thinking = busy && !awaitingApproval && !streamingText && !toolRunning;
 
   return (
     <div className="app">
@@ -412,6 +432,8 @@ export default function App(): JSX.Element {
               </div>
             );
           })}
+
+          {thinking && <Thinking label={reasoning ? "Thinking" : "Working"} />}
         </div>
 
         <Composer
