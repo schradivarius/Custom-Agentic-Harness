@@ -6,8 +6,10 @@ import { ToolCard } from "./components/ToolCard.tsx";
 import { ApprovalCard } from "./components/ApprovalCard.tsx";
 import { Markdown } from "./components/Markdown.tsx";
 import { Thinking } from "./components/Thinking.tsx";
+import { ArtifactCard, ArtifactPanel } from "./components/Artifacts.tsx";
 import { TargetPicker } from "./components/TargetPicker.tsx";
 import type {
+  ArtifactView,
   ApprovalDecision,
   Block,
   ConversationMeta,
@@ -35,6 +37,14 @@ export default function App(): JSX.Element {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
+  /*
+   * Artifacts are kept in a map keyed by id, separate from the transcript.
+   * A block only holds the id, so an `update_artifact` three turns later
+   * re-renders the original card too instead of leaving a stale version
+   * number sitting next to the message that produced it.
+   */
+  const [artifactsById, setArtifactsById] = useState<Record<string, ArtifactView>>({});
+  const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -96,6 +106,19 @@ export default function App(): JSX.Element {
   /* ── event folding ─────────────────────────────────────────────── */
 
   const apply = useCallback((event: HarnessEvent) => {
+    /*
+     * Artifact events carry state that outlives the transcript, so the map and
+     * the panel are updated outside the block fold. A new artifact opens the
+     * panel; a revision of one already on screen refreshes it in place, but a
+     * revision of something the user has since closed does not reopen itself
+     * over whatever they are reading.
+     */
+    if (event.type === "artifact.created" || event.type === "artifact.updated") {
+      const a = event.artifact;
+      setArtifactsById((prev) => ({ ...prev, [a.id]: a }));
+      if (event.type === "artifact.created") setOpenArtifactId(a.id);
+    }
+
     setBlocks((prev) => {
       const out = [...prev];
       const last = out[out.length - 1];
@@ -159,6 +182,15 @@ export default function App(): JSX.Element {
           }
           return out;
         }
+
+        case "artifact.created": {
+          out.push({ kind: "artifact", id: event.artifact.id, artifactId: event.artifact.id });
+          return out;
+        }
+
+        case "artifact.updated":
+          // No new block: the existing card re-reads from the map.
+          return out;
 
         case "turn.done": {
           for (let i = out.length - 1; i >= 0; i--) {
@@ -283,11 +315,30 @@ export default function App(): JSX.Element {
   const openConversation = useCallback(async (id: string, pinned?: string) => {
     setActiveId(id);
     setBlocks([]);
+    setArtifactsById({});
+    setOpenArtifactId(null);
     if (pinned) setTargetId(pinned);
     try {
-      const turns = await api.getTurns(id);
+      const [turns, arts] = await Promise.all([api.getTurns(id), api.listArtifacts(id)]);
+      setArtifactsById(Object.fromEntries(arts.map((a) => [a.id, a])));
+
+      /*
+       * Artifacts are not recorded in the transcript, so a reloaded
+       * conversation has to place their cards itself. Each one is inserted
+       * before the first turn that postdates its creation, which puts it back
+       * where it appeared live.
+       */
+      const pending = [...arts].sort((a, b) => a.createdAt - b.createdAt);
+      const drainBefore = (at: number, into: Block[]): void => {
+        while (pending.length && pending[0]!.createdAt <= at) {
+          const a = pending.shift()!;
+          into.push({ kind: "artifact", id: a.id, artifactId: a.id });
+        }
+      };
+
       const rebuilt: Block[] = [];
       for (const t of turns) {
+        if (t.role === "assistant") drainBefore(t.at, rebuilt);
         if (t.role === "user") {
           rebuilt.push({ kind: "user", id: nextId(), text: t.text });
           continue;
@@ -306,15 +357,28 @@ export default function App(): JSX.Element {
           });
         }
       }
+      drainBefore(Number.POSITIVE_INFINITY, rebuilt);
       setBlocks(rebuilt);
     } catch (err) {
       console.warn("could not load transcript", err);
     }
   }, []);
 
+  /** Swap the panel to a specific version, fetching the text for it. */
+  const showVersion = useCallback(async (id: string, version: number) => {
+    try {
+      const a = await api.getArtifact(id, version);
+      setArtifactsById((prev) => ({ ...prev, [id]: a }));
+    } catch (err) {
+      console.warn("could not load that artifact version", err);
+    }
+  }, []);
+
   const newChat = useCallback(() => {
     setActiveId(null);
     setBlocks([]);
+    setArtifactsById({});
+    setOpenArtifactId(null);
   }, []);
 
   const removeConversation = useCallback(
@@ -339,9 +403,10 @@ export default function App(): JSX.Element {
   const streamingText = last?.kind === "assistant" && last.streaming;
   const toolRunning = last?.kind === "tool" && !last.result;
   const thinking = busy && !awaitingApproval && !streamingText && !toolRunning;
+  const openArtifact = openArtifactId ? artifactsById[openArtifactId] : undefined;
 
   return (
-    <div className="app">
+    <div className={`app ${openArtifact ? "app--panel" : ""}`}>
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -412,6 +477,16 @@ export default function App(): JSX.Element {
                 </div>
               );
             }
+            if (b.kind === "artifact") {
+              return (
+                <ArtifactCard
+                  key={b.id}
+                  artifact={artifactsById[b.artifactId]}
+                  active={openArtifactId === b.artifactId}
+                  onOpen={() => setOpenArtifactId(b.artifactId)}
+                />
+              );
+            }
             if (b.kind === "tool") {
               return (
                 <div key={b.id} className="turn turn--tool">
@@ -451,6 +526,14 @@ export default function App(): JSX.Element {
           disabled={health !== null && !health.ok}
         />
       </main>
+
+      {openArtifact && (
+        <ArtifactPanel
+          artifact={openArtifact}
+          onClose={() => setOpenArtifactId(null)}
+          onVersion={(v) => void showVersion(openArtifact.id, v)}
+        />
+      )}
     </div>
   );
 }

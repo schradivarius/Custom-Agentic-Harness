@@ -19,6 +19,26 @@ try {
   const pw = await import("playwright");
   chromium = pw.chromium ?? pw.default?.chromium;
 } catch {
+  /*
+   * Fall back to CommonJS resolution before giving up.
+   *
+   * ESM resolution ignores NODE_PATH, so a Playwright installed globally
+   * rather than into this project is invisible to a bare `import` even though
+   * `require` finds it. Without this the check does not fail, it silently
+   * skips — which is worse, because the suite still reports success.
+   */
+  try {
+    const { createRequire } = await import("node:module");
+    const { pathToFileURL } = await import("node:url");
+    const req = createRequire(import.meta.url);
+    const pw = await import(pathToFileURL(req.resolve("playwright")).href);
+    chromium = pw.chromium ?? pw.default?.chromium;
+  } catch {
+    /* genuinely absent */
+  }
+}
+
+if (!chromium) {
   console.log("\nlayout: skipped — Playwright not installed\n");
   process.exit(0);
 }

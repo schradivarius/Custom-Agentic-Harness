@@ -1,5 +1,6 @@
 import type {
   ApprovalDecision,
+  ArtifactView,
   ConversationMeta,
   HarnessEvent,
   HealthReport,
@@ -42,6 +43,22 @@ export const api = {
 
   getTurns: (id: string): Promise<StoredTurn[]> =>
     fetch(`/api/conversations/${encodeURIComponent(id)}/turns`).then(json<StoredTurn[]>),
+
+  listArtifacts: (conversationId: string): Promise<ArtifactView[]> =>
+    fetch(`/api/conversations/${encodeURIComponent(conversationId)}/artifacts`).then(
+      json<ArtifactView[]>,
+    ),
+
+  getArtifact: (id: string, version?: number): Promise<ArtifactView> =>
+    fetch(
+      `/api/artifacts/${encodeURIComponent(id)}` +
+        (version === undefined ? "" : `?version=${version}`),
+    ).then(json<ArtifactView>),
+
+  /** The browser fetches this itself; we only build the URL. */
+  downloadUrl: (id: string, version?: number): string =>
+    `/api/artifacts/${encodeURIComponent(id)}/download` +
+    (version === undefined ? "" : `?version=${version}`),
 
   decideApproval: (approvalId: string, decision: ApprovalDecision): Promise<{ ok: boolean }> =>
     fetch(`/api/approvals/${encodeURIComponent(approvalId)}`, {

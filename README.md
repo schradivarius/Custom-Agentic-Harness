@@ -175,6 +175,43 @@ from the LAN, which has been hiding this. That protection disappears under
 mirrored networking mode or a Windows `portproxy`, so it is not something to
 rely on.
 
+## Artifacts
+
+A long deliverable does not belong in the transcript. When the agent calls
+`create_artifact`, the content goes to a side panel instead — rendered,
+versioned and downloadable — and the conversation keeps only a card linking to
+it. `update_artifact` adds a version rather than a second copy, so a document
+revised four times is one artifact with four versions, not four near-identical
+walls of text.
+
+| tool | produces |
+|---|---|
+| `create_artifact` | `markdown`, `code`, `html` or `svg`, rendered in the panel |
+| `update_artifact` | a new version of an existing artifact |
+| `create_document` | a real `.docx` in Aurora house style, for download |
+
+`create_document` takes Markdown and applies the styling here, in
+`server/src/docx.ts`, rather than asking the model to remember it: Neue Kabel
+throughout, Aurora red headings, a running header and page numbers. Headings,
+paragraphs, bullet and numbered lists, GFM tables, block quotes, fenced code
+and inline bold/italic/code/links are all converted. Anything outside that
+subset degrades to plain text rather than failing.
+
+Two notes on how this is kept safe, since artifacts are the one place
+agent-authored content is rendered rather than escaped:
+
+- An `html` or `svg` artifact renders in an iframe with `sandbox="allow-scripts"`
+  and **no** `allow-same-origin`. That pair is the safe one: the frame gets an
+  opaque origin, so a script inside it can animate the page but cannot read the
+  DOM, the cookies, or call the API as the viewer. Granting both together would
+  let it remove its own sandbox, which is why they are never set at once.
+- Download filenames are rebuilt from an allowlist of characters, because the
+  title is agent-authored and feeds `Content-Disposition`. The download route
+  takes no path from the client at all — it looks the id up in the store and
+  resolves the basename inside the store's own directory.
+
+Artifacts live in `DATA_DIR/artifacts` and are deleted with their conversation.
+
 ## Approvals
 
 Every tool carries a risk tier. Tiers listed in `AUTO_APPROVE` run silently;
@@ -182,7 +219,7 @@ everything else stops and waits for you.
 
 | tier | tools | default |
 |---|---|---|
-| `safe` | `read_file`, `list_directory` | auto-approved |
+| `safe` | `read_file`, `list_directory`, `create_artifact`, `update_artifact`, `create_document` | auto-approved |
 | `caution` | `write_file`, `fetch_url` | prompts |
 | `dangerous` | `run_command` | prompts, and off unless `ENABLE_SHELL=true` |
 
@@ -245,6 +282,7 @@ will never call it.
 | `node scripts/smoke.mjs` | end-to-end: streaming, approve, deny, MCP, persistence |
 | `node scripts/test-agent-ref-probe.mjs` | the agent-reference auto-probe, both outcomes |
 | `node scripts/test-layout.mjs` | the window never scrolls; panes scroll inside themselves |
+| `node scripts/test-artifacts.mjs` | the artifact panel renders, downloads, and keeps the layout |
 
 `test-layout.mjs` needs a running server (`LAYOUT_BASE`, default
 `http://localhost:4300`) and Playwright, which is not a dependency — it skips
@@ -383,6 +421,11 @@ Verified, by running it:
 - workspace confinement, including symlink escapes
 - the UI in Chromium, light and dark, no console errors
 - conversation persistence and transcript rehydration
+- artifacts end to end: creation, versioning, cross-conversation refusal, the
+  size cap, filename sanitising, and the download route serving a `.docx` that
+  unzips with a valid Word part structure
+- the artifact panel in Chromium, light and dark, at three widths, including
+  the layout invariants it could have broken
 
 **Not** verified: a live Microsoft Foundry project. No Azure credential was
 available, so every run above used mock mode. The Foundry call shapes come from

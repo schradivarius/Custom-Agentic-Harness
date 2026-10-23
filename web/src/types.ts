@@ -33,6 +33,24 @@ export interface ApprovalRequestView {
   expiresAt: number;
 }
 
+export type ArtifactKind = "markdown" | "code" | "html" | "svg" | "document";
+
+export interface ArtifactView {
+  id: string;
+  conversationId: string;
+  title: string;
+  kind: ArtifactKind;
+  language?: string;
+  filename: string;
+  mime: string;
+  createdAt: number;
+  updatedAt: number;
+  version: number;
+  /** Absent for `document`, which is only ever downloaded. */
+  text?: string;
+  history: { version: number; at: number; bytes: number }[];
+}
+
 export interface TokenUsage {
   input?: number;
   output?: number;
@@ -50,6 +68,8 @@ export type HarnessEvent =
   | { type: "approval.required"; request: ApprovalRequestView }
   | { type: "approval.resolved"; approvalId: string; decision: ApprovalDecision }
   | { type: "tool.result"; result: ToolResultView }
+  | { type: "artifact.created"; artifact: ArtifactView }
+  | { type: "artifact.updated"; artifact: ArtifactView }
   | { type: "turn.done"; responseId: string; usage?: TokenUsage; targetId?: string }
   | { type: "error"; message: string; retryable: boolean };
 
@@ -124,4 +144,5 @@ export type Block =
       approval?: ApprovalRequestView;
       decision?: ApprovalDecision;
     }
+  | { kind: "artifact"; id: string; artifactId: string }
   | { kind: "error"; id: string; message: string; retryable: boolean };

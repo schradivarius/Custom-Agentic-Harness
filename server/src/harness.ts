@@ -180,7 +180,7 @@ export async function runTurn(opts: RunTurnOptions): Promise<void> {
         roundCalls.push(call);
         emit({ type: "tool.call", call });
 
-        const result = await executeLocal(call, sessionId, emit, signal);
+        const result = await executeLocal(call, sessionId, conversationId, emit, signal);
         roundResults.push(result);
         emit({ type: "tool.result", result });
 
@@ -360,6 +360,7 @@ async function askApproval(
 async function executeLocal(
   call: ToolCallView,
   sessionId: string,
+  conversationId: string,
   emit: (e: HarnessEvent) => void,
   signal: AbortSignal,
 ): Promise<ToolResultView> {
@@ -408,7 +409,7 @@ async function executeLocal(
 
   const started = Date.now();
   try {
-    const output = await tool.run(call.args);
+    const output = await tool.run(call.args, { conversationId, emit });
     return {
       id: call.id,
       name: call.name,

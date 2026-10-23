@@ -53,6 +53,51 @@ export interface ApprovalRequestView {
 
 export type ApprovalDecision = "once" | "session" | "deny";
 
+/* ───────────────────────────── artifacts ───────────────────────────── */
+
+/**
+ * What an artifact holds, which decides how the panel renders it.
+ *
+ * `document` is the odd one out: its payload is a binary office file the
+ * server generated, so it is downloadable but not editable in place. The rest
+ * are text the agent wrote and can rewrite.
+ */
+export type ArtifactKind = "markdown" | "code" | "html" | "svg" | "document";
+
+export interface ArtifactVersion {
+  version: number;
+  at: number;
+  /** Text artifacts only. A `document` keeps its bytes on disk instead. */
+  text?: string;
+  /** Bytes on disk, relative to the artifact store. `document` only. */
+  file?: string;
+  bytes: number;
+}
+
+export interface ArtifactMeta {
+  id: string;
+  conversationId: string;
+  title: string;
+  kind: ArtifactKind;
+  /** Source language for `code`, e.g. `python`. */
+  language?: string;
+  /** Suggested download name, extension included. */
+  filename: string;
+  mime: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Highest version number; versions are 1-based and never renumbered. */
+  version: number;
+}
+
+/** An artifact plus the content of one version — what the panel renders. */
+export interface ArtifactView extends ArtifactMeta {
+  /** Absent for `document`, whose content is only ever downloaded. */
+  text?: string;
+  /** Every version, oldest first, for the version switcher. */
+  history: { version: number; at: number; bytes: number }[];
+}
+
 /** Server → UI. Discriminated on `type`. */
 export type HarnessEvent =
   | { type: "conversation"; conversationId: string }
@@ -65,6 +110,8 @@ export type HarnessEvent =
   | { type: "approval.required"; request: ApprovalRequestView }
   | { type: "approval.resolved"; approvalId: string; decision: ApprovalDecision }
   | { type: "tool.result"; result: ToolResultView }
+  | { type: "artifact.created"; artifact: ArtifactView }
+  | { type: "artifact.updated"; artifact: ArtifactView }
   | { type: "turn.done"; responseId: string; usage?: TokenUsage; targetId?: string }
   | { type: "error"; message: string; retryable: boolean };
 

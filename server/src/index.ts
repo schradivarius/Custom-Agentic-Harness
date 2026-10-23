@@ -7,6 +7,7 @@ import { approvalGate } from "./approvals.js";
 import { runTurn } from "./harness.js";
 import { listTools } from "./tools.js";
 import { store } from "./store.js";
+import { artifacts } from "./artifacts.js";
 import {
   createConversation,
   deleteConversation,
@@ -84,7 +85,60 @@ app.delete("/api/conversations/:id", async (req, res) => {
     console.warn(`[conversations] remote delete failed for ${id}:`, err?.message ?? err);
   }
   store.deleteConversation(id);
+  artifacts.deleteForConversation(id);
   res.json({ ok: true });
+});
+
+/* ───────────────────────────── artifacts ─────────────────────────── */
+
+app.get("/api/conversations/:id/artifacts", (req, res) => {
+  res.json(artifacts.listForConversation(String(req.params.id)));
+});
+
+app.get("/api/artifacts/:id", (req, res) => {
+  const raw = req.query["version"];
+  const version = raw === undefined ? undefined : Number(raw);
+  if (version !== undefined && !Number.isInteger(version)) {
+    res.status(400).json({ error: "version must be an integer" });
+    return;
+  }
+  const view = artifacts.get(String(req.params.id), version);
+  if (!view) {
+    res.status(404).json({ error: "no such artifact" });
+    return;
+  }
+  res.json(view);
+});
+
+/**
+ * Serve an artifact's bytes as a download.
+ *
+ * No path from the client reaches the filesystem: the id is looked up in the
+ * store and the store resolves its own basename inside its own directory, so
+ * this route cannot be walked out of the artifact store however the id is
+ * spelled. The headers matter as much as the lookup — a generated .docx is
+ * served as an attachment with `nosniff` so no browser is tempted to render
+ * agent-authored bytes as a document in our own origin.
+ */
+app.get("/api/artifacts/:id/download", (req, res) => {
+  const raw = req.query["version"];
+  const version = raw === undefined ? undefined : Number(raw);
+  if (version !== undefined && !Number.isInteger(version)) {
+    res.status(400).json({ error: "version must be an integer" });
+    return;
+  }
+
+  const found = artifacts.bytesFor(String(req.params.id), version);
+  if (!found) {
+    res.status(404).json({ error: "no such artifact" });
+    return;
+  }
+
+  res.setHeader("Content-Type", found.mime);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", `attachment; filename="${found.filename}"`);
+  res.setHeader("Content-Length", String(found.bytes.byteLength));
+  res.send(found.bytes);
 });
 
 /* ───────────────────────────── approvals ─────────────────────────── */

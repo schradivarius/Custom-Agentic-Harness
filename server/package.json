@@ -13,6 +13,7 @@
   "dependencies": {
     "@azure/ai-projects": "^2.8.0",
     "@azure/identity": "^4.5.0",
+    "docx": "^9.5.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "openai": "^7.33.0"

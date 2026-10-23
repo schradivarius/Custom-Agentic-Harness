@@ -3,9 +3,23 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { config } from "./config.js";
-import type { RiskTier } from "./protocol.js";
+import { artifacts, safeFilename } from "./artifacts.js";
+import { markdownToDocx } from "./docx.js";
+import type { ArtifactView, HarnessEvent, RiskTier } from "./protocol.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * What a tool knows about the turn it is running in.
+ *
+ * Most tools need none of this. The artifact tools do: an artifact belongs to
+ * a conversation, and the panel has to learn about it mid-turn rather than
+ * when the turn finally ends.
+ */
+export interface ToolContext {
+  conversationId: string;
+  emit: (event: HarnessEvent) => void;
+}
 
 export interface ToolDef {
   name: string;
@@ -15,7 +29,7 @@ export interface ToolDef {
   parameters: Record<string, unknown>;
   /** One-line human summary shown in the approval prompt. */
   preview: (args: any) => string;
-  run: (args: any) => Promise<string>;
+  run: (args: any, ctx: ToolContext) => Promise<string>;
 }
 
 /* ───────────────────────── path containment ───────────────────────── */
@@ -233,9 +247,179 @@ const runCommand: ToolDef = {
   },
 };
 
+/* ──────────────────────────── artifacts ───────────────────────────── */
+
+/**
+ * Why these are `safe` and need no approval.
+ *
+ * An artifact is inert by construction: it is written to the harness's own
+ * store, never to the workspace, never to the network, and nothing executes
+ * it. An `html` artifact is rendered in a sandboxed iframe with no
+ * same-origin privilege, so it cannot reach the API or read a cookie either.
+ * Gating them would mean a prompt for every paragraph of a report the user
+ * just asked for, which trains people to click through prompts — the opposite
+ * of what the approval gate is for.
+ */
+
+const KINDS = ["markdown", "code", "html", "svg"] as const;
+
+/** Guard against an unbounded artifact filling the data directory. */
+const MAX_ARTIFACT_BYTES = 1_000_000;
+
+function checkSize(content: unknown): string {
+  if (typeof content !== "string") throw new Error("`content` must be a string.");
+  const bytes = Buffer.byteLength(content, "utf8");
+  if (bytes > MAX_ARTIFACT_BYTES) {
+    throw new Error(
+      `Content is ${bytes} bytes; the limit is ${MAX_ARTIFACT_BYTES}. Split it across artifacts.`,
+    );
+  }
+  return content;
+}
+
+const describe = (a: ArtifactView): string =>
+  `Created artifact ${a.id} ("${a.title}", ${a.kind}). It is now open in the user's side panel and downloadable as ${a.filename}. Do not repeat its contents in your reply — say what it is and what you would change next.`;
+
+const createArtifact: ToolDef = {
+  name: "create_artifact",
+  description:
+    "Publish a standalone document, code file, page or diagram to the user's side panel, where it is rendered, versioned and downloadable. Use this instead of a long fenced code block whenever the output is a deliverable the user will keep, re-read or send on — a report, a script, a spec, a letter. Returns an artifact id; pass it to update_artifact to revise rather than creating a second artifact.",
+  risk: "safe",
+  parameters: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "Short human title, e.g. 'Culvert Sizing Memo'." },
+      kind: {
+        type: "string",
+        enum: [...KINDS],
+        description:
+          "markdown for prose, code for a source file, html for a self-contained page, svg for a diagram.",
+      },
+      content: { type: "string", description: "The full content. Not a diff or an excerpt." },
+      language: {
+        type: "string",
+        description: "For kind=code, the language, e.g. 'python'. Sets the file extension.",
+      },
+    },
+    required: ["title", "kind", "content"],
+    additionalProperties: false,
+  },
+  preview: (a) => `artifact "${a?.title}" (${a?.kind})`,
+  run: async (a, ctx) => {
+    const kind = String(a?.kind ?? "");
+    if (!(KINDS as readonly string[]).includes(kind)) {
+      throw new Error(`\`kind\` must be one of ${KINDS.join(", ")}.`);
+    }
+    const title = String(a?.title ?? "").trim();
+    if (!title) throw new Error("`title` must be a non-empty string.");
+
+    const view = artifacts.createText({
+      conversationId: ctx.conversationId,
+      title,
+      kind: kind as (typeof KINDS)[number],
+      text: checkSize(a?.content),
+      ...(typeof a?.language === "string" && a.language ? { language: a.language } : {}),
+    });
+    ctx.emit({ type: "artifact.created", artifact: view });
+    return describe(view);
+  },
+};
+
+const updateArtifact: ToolDef = {
+  name: "update_artifact",
+  description:
+    "Replace the contents of an existing artifact with a new version. The previous version is kept and the user can switch back to it. Use this for every revision of something you already published, so the user sees one evolving document rather than a pile of near-identical ones.",
+  risk: "safe",
+  parameters: {
+    type: "object",
+    properties: {
+      artifact_id: { type: "string", description: "The id returned by create_artifact." },
+      content: {
+        type: "string",
+        description: "The complete new content, not a diff. It replaces the previous version.",
+      },
+    },
+    required: ["artifact_id", "content"],
+    additionalProperties: false,
+  },
+  preview: (a) => `revise artifact ${a?.artifact_id}`,
+  run: async (a, ctx) => {
+    const id = String(a?.artifact_id ?? "");
+    const existing = artifacts.get(id);
+    if (!existing) throw new Error(`No artifact with id ${id}.`);
+    if (existing.conversationId !== ctx.conversationId) {
+      // Artifacts are per-conversation; crossing that line would let one chat
+      // rewrite another's deliverable.
+      throw new Error(`Artifact ${id} belongs to a different conversation.`);
+    }
+    if (existing.kind === "document") {
+      throw new Error(
+        "A generated document cannot be edited in place. Call create_document again to produce a new one.",
+      );
+    }
+    const view = artifacts.updateText(id, checkSize(a?.content));
+    if (!view) throw new Error(`Could not update artifact ${id}.`);
+    ctx.emit({ type: "artifact.updated", artifact: view });
+    return `Updated artifact ${id} to version ${view.version}. The panel is showing it.`;
+  },
+};
+
+const createDocument: ToolDef = {
+  name: "create_document",
+  description:
+    "Produce a real Microsoft Word (.docx) file in Aurora Technical Services house style and give it to the user to download. Write the body as Markdown — headings, paragraphs, bullet and numbered lists, tables, block quotes, fenced code and inline bold/italic/links are all converted. Aurora's typeface, red headings, page header and page numbering are applied for you, so do not describe formatting in the content. Use this whenever the user wants a document they can send, print or sign.",
+  risk: "safe",
+  parameters: {
+    type: "object",
+    properties: {
+      title: {
+        type: "string",
+        description: "Document title. Becomes the heading on page one and the filename.",
+      },
+      content: { type: "string", description: "The document body as Markdown." },
+      subtitle: {
+        type: "string",
+        description: "Optional line under the title, e.g. 'Draft for review · 23 Oct 2026'.",
+      },
+    },
+    required: ["title", "content"],
+    additionalProperties: false,
+  },
+  preview: (a) => `Word document "${a?.title}"`,
+  run: async (a, ctx) => {
+    const title = String(a?.title ?? "").trim();
+    if (!title) throw new Error("`title` must be a non-empty string.");
+    const markdown = checkSize(a?.content);
+
+    const bytes = await markdownToDocx({
+      title,
+      markdown,
+      ...(typeof a?.subtitle === "string" && a.subtitle ? { subtitle: a.subtitle } : {}),
+    });
+
+    const view = artifacts.createDocument({
+      conversationId: ctx.conversationId,
+      title,
+      filename: safeFilename(title, "docx"),
+      mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      bytes,
+    });
+    ctx.emit({ type: "artifact.created", artifact: view });
+    return `Wrote ${view.filename} (${bytes.byteLength} bytes) as artifact ${view.id}. A download button for it is now in the user's side panel. Do not paste the document text into your reply.`;
+  },
+};
+
 /* ──────────────────────────── the registry ────────────────────────── */
 
-const all: ToolDef[] = [readFile, listDirectory, writeFile, fetchUrl];
+const all: ToolDef[] = [
+  readFile,
+  listDirectory,
+  writeFile,
+  fetchUrl,
+  createArtifact,
+  updateArtifact,
+  createDocument,
+];
 if (config.shell.enabled) all.push(runCommand);
 
 export const registry = new Map<string, ToolDef>(all.map((t) => [t.name, t]));
