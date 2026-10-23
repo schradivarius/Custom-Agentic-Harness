@@ -219,6 +219,7 @@ if (fs.existsSync(webDist)) {
 
 const banner = (report: Awaited<ReturnType<typeof health>>): void => {
   console.log(`\n  foundry-desk  ·  http://localhost:${config.port}\n`);
+  console.log(`  bind      ${config.host}:${config.port}`);
   console.log(`  project   ${report.endpoint}`);
   console.log(`  agent     ${report.agentName}  (ref mode: ${report.agentRefMode})`);
   console.log(`  workspace ${config.workspaceRoot}`);
@@ -226,13 +227,21 @@ const banner = (report: Awaited<ReturnType<typeof health>>): void => {
     `  tools     ${report.localTools.join(", ") || "none"}${config.shell.enabled ? "" : "  (shell disabled)"}`,
   );
   console.log(`  approve   auto: ${config.approvals.autoApprove.join(", ") || "nothing"}\n`);
+  if (config.host !== "127.0.0.1" && config.host !== "localhost" && config.host !== "::1") {
+    console.warn(
+      `\n  ⚠ Listening on ${config.host}, so anyone who can reach this machine\n` +
+        "    can use this harness. It has no sign-in, it runs tools on this\n" +
+        "    host, and it holds your Azure credential. Put authentication in\n" +
+        "    front of it before leaving this on a shared network.\n",
+    );
+  }
   if (!report.ok) {
     console.warn(`  ⚠ could not reach the agent: ${report.detail}`);
     console.warn("    Check FOUNDRY_PROJECT_ENDPOINT / FOUNDRY_AGENT_NAME and run `az login`.\n");
   }
 };
 
-app.listen(config.port, async () => {
+app.listen(config.port, config.host, async () => {
   try {
     const synced = await syncLocalToolsToAgent();
     if (synced) console.log(`[foundry] published local tools as agent version ${synced.version}`);

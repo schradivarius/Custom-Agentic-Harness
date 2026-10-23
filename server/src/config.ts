@@ -104,6 +104,15 @@ if (!(AGENT_REF_MODES as readonly string[]).includes(agentRefModeRaw)) {
 export const config = {
   port: Number(process.env["PORT"] ?? 4300),
 
+  /**
+   * Interface to bind. Loopback by default.
+   *
+   * This harness has no authentication, executes tools on the host and holds
+   * an Azure credential, so anyone who can reach the port can use all three.
+   * Binding every interface is a deliberate act, not a default.
+   */
+  host: process.env["HOST"]?.trim() || "127.0.0.1",
+
   foundry: {
     mock,
     mockRefMode: mockRefMode as "" | "client" | "body",

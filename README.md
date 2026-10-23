@@ -156,6 +156,25 @@ schemas there. To push this harness's schemas up instead, set
 why it is off by default. Model-deployment targets never need any of this:
 their tools go out inline on every call.
 
+## Who can reach it
+
+It binds `127.0.0.1` by default, so only your machine can. That default is
+load-bearing: the harness has no sign-in of its own, it executes tools on the
+host, and it holds your Azure credential. Anyone who reaches the port gets all
+three — reading anything under `WORKSPACE_ROOT` with no prompt at all, since
+`read_file` and `list_directory` are auto-approved, and raising approval
+prompts you would see with no indication they came from someone else. They
+would also be using your Foundry agent, on your subscription, with your
+permissions.
+
+`HOST=0.0.0.0` opens it to the network and prints a warning at boot. Only do
+that behind something that authenticates.
+
+A note for WSL: a service in WSL2's default NAT mode is usually not reachable
+from the LAN, which has been hiding this. That protection disappears under
+mirrored networking mode or a Windows `portproxy`, so it is not something to
+rely on.
+
 ## Approvals
 
 Every tool carries a risk tier. Tiers listed in `AUTO_APPROVE` run silently;
