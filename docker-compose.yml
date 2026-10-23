@@ -1,0 +1,22 @@
+services:
+  foundry-desk:
+    build: .
+    image: foundry-desk:local
+    ports:
+      - "127.0.0.1:4300:4300"   # loopback only: this harness has no auth
+    env_file:
+      - .env
+    environment:
+      # Paths inside the container. The bind mount below decides what they see.
+      WORKSPACE_ROOT: /workspace
+      DATA_DIR: /data
+    volumes:
+      # The folder the agent's tools may read and write. Nothing outside it is
+      # reachable — which is the containerised form of the workspace jail.
+      - ${WORKSPACE_HOST_PATH:-./workspace}:/workspace
+      # Conversation history, kept across rebuilds.
+      - foundry-desk-data:/data
+    restart: unless-stopped
+
+volumes:
+  foundry-desk-data:

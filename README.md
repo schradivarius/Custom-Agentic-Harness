@@ -291,6 +291,60 @@ Note: the brand's red, sampled from the logo, is `#D2202F`. This theme uses
 `#C90000` as specified. If you want the exact brand value instead, it is one
 token — `--accent` in `web/src/styles.css`.
 
+## Running it in a container
+
+```bash
+cp .env.example .env            # fill in endpoint + agent name
+WORKSPACE_HOST_PATH=$HOME/agent-workspace docker compose up --build
+```
+
+Then <http://localhost:4300>. The port is published on loopback only, because
+this harness has no authentication of its own.
+
+`WORKSPACE_HOST_PATH` is the folder on your machine the agent's tools may read
+and write; it is mounted at `/workspace`, and nothing outside it is reachable.
+That is the workspace jail in containerised form. Paths in approval prompts
+are the container's, so `/workspace/notes/x.md`, not the host path.
+
+Conversation history lives in a named volume and survives rebuilds.
+
+### `az login` does not reach inside the container
+
+This is the part that catches people. `DefaultAzureCredential` falls back to
+`AzureCliCredential`, which works by **running the `az` binary** — not by
+reading `~/.azure`. A slim Node image has no `az`, so mounting that directory
+achieves nothing on its own.
+
+Use a service principal instead, which `EnvironmentCredential` resolves over
+plain HTTP with no CLI involved:
+
+```
+AZURE_TENANT_ID=...
+AZURE_CLIENT_ID=...
+AZURE_CLIENT_SECRET=...
+```
+
+Give it the **Azure AI User** role on the project. Put it in `.env`, which is
+in `.gitignore` and excluded from the build context — it is read at runtime,
+never baked into the image.
+
+Deployed on Azure, prefer a managed identity and set none of the three.
+
+To check what the container itself can see:
+
+```bash
+docker compose exec foundry-desk node scripts/doctor.mjs
+```
+
+### What is in the image
+
+`git`, `ripgrep` and `python3` are installed because the default
+`SHELL_ALLOWLIST` names them. `ENABLE_SHELL` is still false by default; without
+those binaries the allowlist would refer to nothing the moment it was enabled.
+
+The server runs as uid 1000 (`node`), so both mounted paths must be writable
+by it.
+
 ## Making it a desktop app
 
 It is a local server plus a static UI, which is the shape Tauri and Electron
