@@ -5,6 +5,8 @@ import { promisify } from "node:util";
 import { config } from "./config.js";
 import { artifacts, safeFilename } from "./artifacts.js";
 import { markdownToDocx } from "./docx.js";
+import { markdownToPdf } from "./pdf.js";
+import { readDocument } from "./extract.js";
 import type { ArtifactView, HarnessEvent, RiskTier } from "./protocol.js";
 
 const execFileAsync = promisify(execFile);
@@ -364,10 +366,19 @@ const updateArtifact: ToolDef = {
   },
 };
 
+const DOC_FORMATS = {
+  docx: {
+    ext: "docx",
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    label: "Word document",
+  },
+  pdf: { ext: "pdf", mime: "application/pdf", label: "PDF" },
+} as const;
+
 const createDocument: ToolDef = {
   name: "create_document",
   description:
-    "Produce a real Microsoft Word (.docx) file in Aurora Technical Services house style and give it to the user to download. Write the body as Markdown — headings, paragraphs, bullet and numbered lists, tables, block quotes, fenced code and inline bold/italic/links are all converted. Aurora's typeface, red headings, page header and page numbering are applied for you, so do not describe formatting in the content. Use this whenever the user wants a document they can send, print or sign.",
+    "Produce a real Word (.docx) or PDF file in Aurora Technical Services house style and give it to the user to download. Write the body as Markdown — headings, paragraphs, bullet and numbered lists, tables, block quotes, fenced code and inline bold/italic/links are all converted. Aurora's typeface, red headings, page header and page numbering are applied for you, so do not describe formatting in the content. Choose docx when the user will edit or redline it, pdf when they will send, print or sign it.",
   risk: "safe",
   parameters: {
     type: "object",
@@ -377,6 +388,11 @@ const createDocument: ToolDef = {
         description: "Document title. Becomes the heading on page one and the filename.",
       },
       content: { type: "string", description: "The document body as Markdown." },
+      format: {
+        type: "string",
+        enum: ["docx", "pdf"],
+        description: "docx (default) for an editable file, pdf for a fixed one.",
+      },
       subtitle: {
         type: "string",
         description: "Optional line under the title, e.g. 'Draft for review · 23 Oct 2026'.",
@@ -385,27 +401,65 @@ const createDocument: ToolDef = {
     required: ["title", "content"],
     additionalProperties: false,
   },
-  preview: (a) => `Word document "${a?.title}"`,
+  preview: (a) => `${DOC_FORMATS[(a?.format ?? "docx") as "docx"]?.label ?? "document"} "${a?.title}"`,
   run: async (a, ctx) => {
     const title = String(a?.title ?? "").trim();
     if (!title) throw new Error("`title` must be a non-empty string.");
     const markdown = checkSize(a?.content);
 
-    const bytes = await markdownToDocx({
-      title,
-      markdown,
-      ...(typeof a?.subtitle === "string" && a.subtitle ? { subtitle: a.subtitle } : {}),
-    });
+    const key = String(a?.format ?? "docx").toLowerCase();
+    const fmt = DOC_FORMATS[key as keyof typeof DOC_FORMATS];
+    if (!fmt) throw new Error("`format` must be either docx or pdf.");
+
+    const subtitle =
+      typeof a?.subtitle === "string" && a.subtitle ? { subtitle: a.subtitle } : {};
+
+    let bytes: Buffer;
+    let note = "";
+    if (key === "pdf") {
+      const out = await markdownToPdf({ title, markdown, ...subtitle });
+      bytes = out.bytes;
+      // A PDF embeds its font, so a fallback changes what the reader sees and
+      // is worth surfacing rather than discovering on a printed copy.
+      if (out.font !== "Neue Kabel") {
+        note = ` Neue Kabel is not installed on the server, so it is set in ${out.font}.`;
+      }
+    } else {
+      bytes = await markdownToDocx({ title, markdown, ...subtitle });
+    }
 
     const view = artifacts.createDocument({
       conversationId: ctx.conversationId,
       title,
-      filename: safeFilename(title, "docx"),
-      mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      filename: safeFilename(title, fmt.ext),
+      mime: fmt.mime,
       bytes,
     });
     ctx.emit({ type: "artifact.created", artifact: view });
-    return `Wrote ${view.filename} (${bytes.byteLength} bytes) as artifact ${view.id}. A download button for it is now in the user's side panel. Do not paste the document text into your reply.`;
+    return `Wrote ${view.filename} (${bytes.byteLength} bytes) as artifact ${view.id}.${note} It is open in the user's side panel with a download button. Do not paste the document text into your reply.`;
+  },
+};
+
+const readDocumentTool: ToolDef = {
+  name: "read_document",
+  description:
+    "Extract the text of a Word (.docx) or PDF file in the user's workspace. read_file cannot do this — those formats are binary, and reading them as text returns noise. Use this whenever the user points at a .docx or .pdf they want you to work from.",
+  risk: "safe",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the .docx or .pdf, relative to the workspace root.",
+      },
+    },
+    required: ["path"],
+    additionalProperties: false,
+  },
+  preview: (a) => `read document ${a?.path}`,
+  run: async (a) => {
+    const p = await resolveInWorkspace(a?.path);
+    return clip(await readDocument(p), 60_000);
   },
 };
 
@@ -419,6 +473,7 @@ const all: ToolDef[] = [
   createArtifact,
   updateArtifact,
   createDocument,
+  readDocumentTool,
 ];
 if (config.shell.enabled) all.push(runCommand);
 

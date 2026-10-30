@@ -188,14 +188,52 @@ walls of text.
 |---|---|
 | `create_artifact` | `markdown`, `code`, `html` or `svg`, rendered in the panel |
 | `update_artifact` | a new version of an existing artifact |
-| `create_document` | a real `.docx` in Aurora house style, for download |
+| `create_document` | a real `.docx` or `.pdf` in Aurora house style |
+| `read_document` | the text of a `.docx` or `.pdf` in the workspace |
 
-`create_document` takes Markdown and applies the styling here, in
-`server/src/docx.ts`, rather than asking the model to remember it: Neue Kabel
-throughout, Aurora red headings, a running header and page numbers. Headings,
-paragraphs, bullet and numbered lists, GFM tables, block quotes, fenced code
-and inline bold/italic/code/links are all converted. Anything outside that
-subset degrades to plain text rather than failing.
+`create_document` takes Markdown and applies the styling server-side rather
+than asking the model to remember it: Aurora red headings, a running header
+and page numbers. Headings, paragraphs, bullet and numbered lists, GFM tables,
+block quotes, fenced code and inline bold/italic/code/links are all converted.
+Anything outside that subset degrades to plain text rather than failing.
+
+Both formats parse the Markdown with `server/src/markdown.ts` and differ only
+in how they draw the result — `docx.ts` and `pdf.ts`. That is deliberate: two
+parsers would drift, and a table that renders in the Word file and silently
+vanishes from the PDF is the kind of bug nobody catches until a client has the
+wrong document.
+
+`read_document` exists because `read_file` is UTF-8 only. Pointed at a `.docx`
+or `.pdf` it would return noise, so those formats get their own tool, which
+sniffs the content rather than trusting the extension.
+
+### Previewing them
+
+A PDF the browser renders itself, so the panel frames it from the download
+route with `inline=1`. A `.docx` has no native renderer anywhere, so the server
+converts it with `mammoth` and the panel displays that in a sandboxed frame.
+`inline=1` is honoured **for PDFs only** — serving anything else inline would
+render agent-authored bytes in our own origin.
+
+### The PDF typeface
+
+Word substitutes a missing font silently, so a `.docx` asks for Neue Kabel and
+degrades gracefully. A PDF embeds what it draws and has no such fallback, so
+unless the font files are present it is set in Helvetica, and `create_document`
+says so in its result rather than letting you find out from a printed copy.
+
+To use the real face, drop these into `assets/fonts` (the files are licensed
+and are deliberately not in this repository):
+
+```
+assets/fonts/NeueKabel-Regular.ttf
+assets/fonts/NeueKabel-Bold.ttf
+assets/fonts/NeueKabel-Italic.ttf
+assets/fonts/NeueKabel-BoldItalic.ttf
+```
+
+All four or none — a document set half in Neue Kabel and half in Helvetica
+looks like a mistake, so a partial set is ignored.
 
 Two notes on how this is kept safe, since artifacts are the one place
 agent-authored content is rendered rather than escaped:
@@ -282,7 +320,7 @@ will never call it.
 | `node scripts/smoke.mjs` | end-to-end: streaming, approve, deny, MCP, persistence |
 | `node scripts/test-agent-ref-probe.mjs` | the agent-reference auto-probe, both outcomes |
 | `node scripts/test-layout.mjs` | the window never scrolls; panes scroll inside themselves |
-| `node scripts/test-artifacts.mjs` | the artifact panel renders, downloads, and keeps the layout |
+| `node scripts/test-artifacts.mjs` | the artifact panel renders, previews, downloads, and keeps the layout |
 
 `test-layout.mjs` needs a running server (`LAYOUT_BASE`, default
 `http://localhost:4300`) and Playwright, which is not a dependency — it skips
@@ -424,8 +462,19 @@ Verified, by running it:
 - artifacts end to end: creation, versioning, cross-conversation refusal, the
   size cap, filename sanitising, and the download route serving a `.docx` that
   unzips with a valid Word part structure
+- both document formats: a `.docx` whose parts carry the styling, and a `.pdf`
+  whose text extracts back out intact with correct pagination
+- `read_document` on both formats, its refusal of a text file, and its
+  workspace confinement
+- the Word preview path, and that `inline=1` is refused for anything but a PDF
 - the artifact panel in Chromium, light and dark, at three widths, including
   the layout invariants it could have broken
+
+**Not** verified: a PDF rendering inside the panel's frame. Headless Chromium
+ships no PDF viewer — it downloads them instead — so the bytes, the headers and
+the frame's `src` are all asserted, but nobody has watched one appear. It
+should work in any real browser; if it does not, the Download button beside it
+always will.
 
 **Not** verified: a live Microsoft Foundry project. No Azure credential was
 available, so every run above used mock mode. The Foundry call shapes come from

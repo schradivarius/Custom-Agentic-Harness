@@ -55,6 +55,12 @@ export const api = {
         (version === undefined ? "" : `?version=${version}`),
     ).then(json<ArtifactView>),
 
+  /** How a generated document can be displayed, if at all. */
+  getPreview: (id: string): Promise<{ kind: "pdf" } | { kind: "html"; html: string }> =>
+    fetch(`/api/artifacts/${encodeURIComponent(id)}/preview`).then(
+      json<{ kind: "pdf" } | { kind: "html"; html: string }>,
+    ),
+
   /** The browser fetches this itself; we only build the URL. */
   downloadUrl: (id: string, version?: number): string =>
     `/api/artifacts/${encodeURIComponent(id)}/download` +

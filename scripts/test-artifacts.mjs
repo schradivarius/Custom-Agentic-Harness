@@ -103,17 +103,18 @@ for (const scheme of ["light", "dark"]) {
   );
   check("thread keeps its own scroll", m.threadScrollable);
 
-  // Switching to a document artifact, if there is one, must offer a download
-  // and no broken preview.
+  // A generated document must actually preview, each format its own way.
   const docCard = page.locator(".acard", { hasText: "Word document" }).first();
   if (await docCard.count()) {
     await docCard.click();
-    await page.waitForSelector(".apanel__note", { timeout: 5000 });
-    check("document artifact offers a download instead of a preview", true);
+    await page.waitForSelector(".apanel__frame", { timeout: 10000 });
+    const frame = page.frameLocator(".apanel__frame");
+    check(
+      "Word document renders a converted preview",
+      (await frame.locator("body").innerText()).trim().length > 0,
+    );
 
-    // Follow the link for real: a 200 with the Word MIME type is the whole
-    // feature, and a broken href would be invisible in a screenshot.
-    const href = await page.locator(".apanel__note a").getAttribute("href");
+    const href = await page.locator(".apanel__dl").first().getAttribute("href");
     const res = await page.request.get(new URL(href, BASE).toString());
     check("download responds 200", res.status() === 200, String(res.status()));
     check(
@@ -126,6 +127,28 @@ for (const scheme of ["light", "dark"]) {
       "downloaded bytes are a real zip container",
       body.subarray(0, 4).toString("hex") === "504b0304",
       body.subarray(0, 4).toString("hex"),
+    );
+  }
+
+  const pdfCard = page.locator(".acard", { hasText: "PDF" }).first();
+  if (await pdfCard.count()) {
+    await pdfCard.click();
+    await page.waitForSelector(".apanel__frame", { timeout: 10000 });
+    const src = await page.locator(".apanel__frame").getAttribute("src");
+    check("PDF is framed inline rather than converted", (src ?? "").includes("inline=1"));
+
+    const res = await page.request.get(new URL(src, BASE).toString());
+    check("inline PDF responds 200", res.status() === 200, String(res.status()));
+    check(
+      "inline PDF is served for display, not download",
+      (res.headers()["content-disposition"] ?? "").startsWith("inline"),
+      res.headers()["content-disposition"] ?? "(none)",
+    );
+    const body = await res.body();
+    check(
+      "inline bytes are a real PDF",
+      body.subarray(0, 5).toString() === "%PDF-",
+      body.subarray(0, 5).toString(),
     );
   }
 

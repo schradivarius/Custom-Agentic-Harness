@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.ts";
 import { Markdown } from "./Markdown.tsx";
 import type { ArtifactKind, ArtifactView } from "../types.ts";
@@ -8,8 +8,22 @@ const KIND_LABEL: Record<ArtifactKind, string> = {
   code: "Code",
   html: "Page",
   svg: "Diagram",
-  document: "Word document",
+  document: "Document",
 };
+
+/**
+ * What to call an artifact in the UI.
+ *
+ * `document` covers more than one file format, so the kind alone is not enough
+ * to label it — calling a PDF a Word document is both wrong and the sort of
+ * thing someone forwards to a client before noticing.
+ */
+function label(a: ArtifactView): string {
+  if (a.kind !== "document") return KIND_LABEL[a.kind];
+  if (a.mime === "application/pdf") return "PDF";
+  if (a.mime.includes("wordprocessingml")) return "Word document";
+  return "Document";
+}
 
 const ico = {
   stroke: "currentColor",
@@ -96,7 +110,7 @@ export function ArtifactCard({
         <span className="acard__body">
           <span className="acard__title">{artifact.title}</span>
           <span className="acard__meta">
-            {KIND_LABEL[artifact.kind]}
+            {label(artifact)}
             {artifact.version > 1 && ` · v${artifact.version}`}
             {` · ${size(bytesOf(artifact))}`}
           </span>
@@ -130,6 +144,129 @@ function Sandboxed({ html, title }: { html: string; title: string }): JSX.Elemen
   );
 }
 
+/**
+ * Wrap converted Word HTML in a readable page.
+ *
+ * The frame has an opaque origin, so it inherits nothing from the app — not
+ * the stylesheet, not the theme. Everything it needs travels with it. It is
+ * deliberately light-on-white whatever the app's theme: this is a preview of
+ * a printed document, and a dark one would misrepresent it.
+ */
+function wrapDocHtml(html: string): string {
+  return `<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 40px 48px 64px; background: #fff; color: #1f1f1f;
+    font-family: "Neue Kabel", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    font-size: 15px; line-height: 1.62;
+  }
+  h1, h2 { color: #c90000; font-weight: 600; line-height: 1.25; }
+  h1 { font-size: 28px; margin: 0 0 18px; }
+  h2 { font-size: 21px; margin: 32px 0 10px; }
+  h3, h4, h5, h6 { font-size: 17px; margin: 26px 0 8px; font-weight: 600; }
+  p { margin: 0 0 13px; }
+  ul, ol { margin: 0 0 13px; padding-left: 26px; }
+  li { margin: 4px 0; }
+  a { color: #0a58ca; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+  th, td { border: 1px solid #d8d8d8; padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: #f7f7f8; font-weight: 600; }
+  img { max-width: 100%; height: auto; }
+</style></head><body>${html}</body></html>`;
+}
+
+type Preview =
+  | { state: "loading" }
+  | { state: "pdf" }
+  | { state: "html"; html: string }
+  | { state: "none"; reason: string };
+
+/**
+ * Show a generated document, which neither artifact kind above can do.
+ *
+ * A PDF the browser renders itself, so it is framed straight from the inline
+ * download. A .docx has no renderer anywhere, so the server converts it and
+ * the result is displayed in a frame that can do nothing at all.
+ */
+function DocumentPreview({
+  artifact,
+  href,
+}: {
+  artifact: ArtifactView;
+  href: string;
+}): JSX.Element {
+  const [preview, setPreview] = useState<Preview>({ state: "loading" });
+
+  useEffect(() => {
+    let live = true;
+    setPreview({ state: "loading" });
+    api
+      .getPreview(artifact.id)
+      .then((r) => {
+        if (!live) return;
+        setPreview(r.kind === "pdf" ? { state: "pdf" } : { state: "html", html: r.html });
+      })
+      .catch((err: unknown) => {
+        if (!live) return;
+        setPreview({
+          state: "none",
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      });
+    // Cancel on unmount: a slow conversion must not land in a panel the user
+    // has since pointed at something else.
+    return () => {
+      live = false;
+    };
+  }, [artifact.id]);
+
+  const srcDoc = useMemo(
+    () => (preview.state === "html" ? wrapDocHtml(preview.html) : ""),
+    [preview],
+  );
+
+  if (preview.state === "loading") {
+    return <div className="apanel__note"><p>Rendering a preview…</p></div>;
+  }
+
+  if (preview.state === "pdf") {
+    /*
+     * Not sandboxed, deliberately. The bytes are served as application/pdf
+     * with nosniff, so the browser hands them to its own PDF viewer rather
+     * than parsing them as a page — there is no HTML here to execute. A
+     * sandbox flag would instead break that viewer in several browsers.
+     */
+    const src = `${href}${href.includes("?") ? "&" : "?"}inline=1`;
+    return <iframe className="apanel__frame" title={artifact.title} src={src} />;
+  }
+
+  if (preview.state === "html") {
+    return (
+      <iframe
+        className="apanel__frame"
+        title={artifact.title}
+        sandbox=""
+        referrerPolicy="no-referrer"
+        srcDoc={srcDoc}
+      />
+    );
+  }
+
+  return (
+    <div className="apanel__note">
+      <p>
+        No preview for this one — {preview.reason}. The file itself is fine; download it to read
+        it.
+      </p>
+      <a className="apanel__dl" href={href} download={artifact.filename}>
+        Download {artifact.filename}
+      </a>
+    </div>
+  );
+}
+
 export function ArtifactPanel({
   artifact,
   onClose,
@@ -160,7 +297,7 @@ export function ArtifactPanel({
           <div className="apanel__names">
             <h2 className="apanel__title">{artifact.title}</h2>
             <p className="apanel__sub">
-              {KIND_LABEL[artifact.kind]} · {artifact.filename} · {size(bytesOf(artifact))}
+              {label(artifact)} · {artifact.filename} · {size(bytesOf(artifact))}
             </p>
           </div>
         </div>
@@ -217,15 +354,7 @@ export function ArtifactPanel({
 
       <div className="apanel__body">
         {artifact.kind === "document" ? (
-          <div className="apanel__note">
-            <p>
-              This is a Word file in Aurora house style. There is no in-browser preview — open it
-              in Word to read or edit it.
-            </p>
-            <a className="apanel__dl" href={href} download={artifact.filename}>
-              Download {artifact.filename}
-            </a>
-          </div>
+          <DocumentPreview artifact={artifact} href={href} />
         ) : tab === "preview" ? (
           artifact.kind === "markdown" ? (
             <div className="apanel__doc">

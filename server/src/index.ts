@@ -8,6 +8,7 @@ import { runTurn } from "./harness.js";
 import { listTools } from "./tools.js";
 import { store } from "./store.js";
 import { artifacts } from "./artifacts.js";
+import { docxToHtml } from "./extract.js";
 import {
   createConversation,
   deleteConversation,
@@ -134,11 +135,61 @@ app.get("/api/artifacts/:id/download", (req, res) => {
     return;
   }
 
+  /*
+   * `inline` lets the panel show a PDF in an iframe, and is honoured for PDFs
+   * only. Serving anything else inline would render agent-authored bytes in
+   * our own origin, where a script in them would run as us; a PDF opens in the
+   * browser's own viewer, which is sandboxed from the page that framed it.
+   */
+  const inline = req.query["inline"] === "1" && found.mime === "application/pdf";
+
   res.setHeader("Content-Type", found.mime);
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Content-Disposition", `attachment; filename="${found.filename}"`);
+  res.setHeader(
+    "Content-Disposition",
+    `${inline ? "inline" : "attachment"}; filename="${found.filename}"`,
+  );
   res.setHeader("Content-Length", String(found.bytes.byteLength));
   res.send(found.bytes);
+});
+
+/**
+ * A displayable form of a generated document.
+ *
+ * A PDF needs nothing: the browser renders it, so the panel points an iframe
+ * at the inline download. A .docx has no native renderer anywhere, so it is
+ * converted to HTML here. That HTML is returned as data for the panel to put
+ * in a sandboxed frame, never served as a page from this origin.
+ */
+app.get("/api/artifacts/:id/preview", async (req, res) => {
+  const id = String(req.params.id);
+  const meta = artifacts.get(id);
+  if (!meta) {
+    res.status(404).json({ error: "no such artifact" });
+    return;
+  }
+
+  if (meta.mime === "application/pdf") {
+    res.json({ kind: "pdf" });
+    return;
+  }
+
+  const found = artifacts.bytesFor(id);
+  if (!found) {
+    res.status(404).json({ error: "no such artifact" });
+    return;
+  }
+
+  if (!found.mime.includes("wordprocessingml")) {
+    res.status(415).json({ error: "no preview for this format" });
+    return;
+  }
+
+  try {
+    res.json({ kind: "html", html: await docxToHtml(found.bytes) });
+  } catch (err: any) {
+    res.status(500).json({ error: `could not render a preview: ${err?.message ?? err}` });
+  }
 });
 
 /* ───────────────────────────── approvals ─────────────────────────── */
